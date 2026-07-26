@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MedConnect Campaigns — Customers</title>
+
+<link id="bootstrap-css" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=IBM+Plex+Sans+Arabic:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body data-page="doctors">
+
+<div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <span class="mark"><i class="bi bi-heart-pulse-fill"></i></span>
+      <span data-i18n="meta.appName">MedConnect Campaigns</span>
+    </div>
+    <nav class="nav flex-column">
+      <a class="nav-link" href="dashboard.html" data-page="dashboard">
+        <i class="bi bi-grid-1x2-fill"></i> <span data-i18n="nav.dashboard">Dashboard</span>
+      </a>
+      <a class="nav-link" href="#" data-page="campaigns" data-unbuilt="true">
+        <i class="bi bi-megaphone-fill"></i> <span data-i18n="nav.campaigns">Campaigns</span>
+      </a>
+      <a class="nav-link active" href="doctors.html" data-page="doctors">
+        <i class="bi bi-person-badge-fill"></i> <span data-i18n="nav.doctors">Doctors</span>
+      </a>
+      <a class="nav-link" href="#" data-page="templates" data-unbuilt="true">
+        <i class="bi bi-file-earmark-text-fill"></i> <span data-i18n="nav.templates">Templates</span>
+      </a>
+      <a class="nav-link" href="#" data-page="history" data-unbuilt="true">
+        <i class="bi bi-clock-history"></i> <span data-i18n="nav.history">History</span>
+      </a>
+      <div class="nav-section-label">—</div>
+      <a class="nav-link" href="settings.html" data-page="settings">
+        <i class="bi bi-gear-fill"></i> <span data-i18n="nav.settings">Settings</span>
+      </a>
+      <a class="nav-link" href="#" id="logoutLink">
+        <i class="bi bi-box-arrow-left"></i> <span data-i18n="nav.logout">Log out</span>
+      </a>
+    </nav>
+  </aside>
+
+  <div class="main-col">
+    <header class="topbar">
+      <button class="icon-btn d-lg-none" id="sidebarOpenBtn"><i class="bi bi-list"></i></button>
+      <div class="search-box">
+        <input type="text" class="form-control" data-i18n-placeholder="topbar.search" placeholder="Search...">
+      </div>
+      <div class="ms-auto d-flex align-items-center gap-2">
+        <div class="lang-toggle">
+          <button type="button" data-lang-option="en">EN</button>
+          <button type="button" data-lang-option="ar">AR</button>
+        </div>
+        <button type="button" class="icon-btn" id="themeToggleBtn"><i class="bi bi-moon-stars" id="themeToggleIcon"></i></button>
+        <div class="d-flex align-items-center gap-2 ps-2 border-start">
+          <div style="width:34px;height:34px;border-radius:50%;background:var(--mc-primary-light);color:var(--mc-primary);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.85rem;" id="userInitials">A</div>
+        </div>
+      </div>
+    </header>
+
+    <main class="content-area">
+      <div class="d-flex flex-wrap justify-content-between align-items-start mb-4 gap-2">
+        <div>
+          <h1 class="h4 fw-bold mb-0" data-i18n="doctors.title">Doctors</h1>
+          <p class="text-secondary small mb-0" style="max-width:520px;" data-i18n="doctors.subtitle">This is your contact list for campaigns — doctors, clients, or anyone else. Specialty and hospital are optional.</p>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+          <input type="file" id="importFileInput" accept=".xlsx,.xls" class="d-none">
+          <button class="btn btn-outline-secondary d-flex align-items-center gap-2" id="importBtn">
+            <i class="bi bi-upload"></i> <span data-i18n="doctors.importExcel">Import Excel</span>
+          </button>
+          <button class="btn btn-outline-secondary d-flex align-items-center gap-2" id="exportBtn">
+            <i class="bi bi-download"></i> <span data-i18n="doctors.exportExcel">Export Excel</span>
+          </button>
+          <button class="btn btn-mc-primary d-flex align-items-center gap-2" id="addBtn">
+            <i class="bi bi-plus-lg"></i> <span data-i18n="doctors.addNew">Add contact</span>
+          </button>
+        </div>
+      </div>
+
+      <div id="notConnectedNote" class="alert alert-warning py-2 small d-none" data-i18n="doctors.notConnected">
+        Connect your backend in Settings first to manage real data.
+      </div>
+
+      <div class="panel">
+        <!-- Toolbar: search + filter + bulk actions -->
+        <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+          <div class="flex-grow-1" style="min-width:220px;max-width:340px;">
+            <input type="text" class="form-control" id="searchInput" data-i18n-placeholder="doctors.searchPlaceholder" placeholder="Search by name or mobile...">
+          </div>
+          <select class="form-select" id="statusFilter" style="max-width:180px;">
+            <option value="" data-i18n="doctors.filterAll">All statuses</option>
+            <option value="Active" data-i18n="doctors.filterActive">Active</option>
+            <option value="Inactive" data-i18n="doctors.filterInactive">Inactive</option>
+          </select>
+          <button class="btn btn-outline-danger btn-sm d-none align-items-center gap-2" id="bulkDeleteBtn">
+            <i class="bi bi-trash"></i> <span id="bulkDeleteLabel"></span>
+          </button>
+        </div>
+
+        <div class="table-responsive">
+          <table class="table table-mc mb-0">
+            <thead>
+              <tr>
+                <th style="width:34px;"><input type="checkbox" id="selectAllCheckbox"></th>
+                <th data-i18n="doctors.col.name">Name</th>
+                <th data-i18n="doctors.col.mobile">Mobile</th>
+                <th data-i18n="doctors.col.specialty">Specialty</th>
+                <th data-i18n="doctors.col.hospital">Hospital / Company</th>
+                <th data-i18n="doctors.col.city">City</th>
+                <th data-i18n="doctors.col.status">Status</th>
+                <th data-i18n="doctors.col.actions">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="doctorsBody"></tbody>
+          </table>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center mt-3">
+          <div class="small text-secondary" id="pageInfo"></div>
+          <div class="d-flex gap-2">
+            <button class="btn btn-outline-secondary btn-sm" id="prevPageBtn"><span data-i18n="doctors.prev">Previous</span></button>
+            <button class="btn btn-outline-secondary btn-sm" id="nextPageBtn"><span data-i18n="doctors.next">Next</span></button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- Add / Edit modal -->
+<div class="modal fade" id="doctorModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="border-radius:var(--mc-radius);border:none;">
+      <div class="modal-header">
+        <h5 class="modal-title fw-bold" id="doctorModalTitle" data-i18n="doctors.modal.addTitle">Add contact</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="doctorForm">
+        <div class="modal-body">
+          <input type="hidden" id="doctorId">
+          <div class="mb-3">
+            <label class="form-label" data-i18n="doctors.modal.name">Full name</label>
+            <input type="text" class="form-control" id="fieldName" data-i18n-placeholder="doctors.modal.namePlaceholder" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" data-i18n="doctors.modal.mobile">Mobile number</label>
+            <input type="text" class="form-control" id="fieldMobile" data-i18n-placeholder="doctors.modal.mobilePlaceholder" required>
+          </div>
+          <div class="row g-3 mb-3">
+            <div class="col-6">
+              <label class="form-label" data-i18n="doctors.modal.specialty">Specialty (optional)</label>
+              <input type="text" class="form-control" id="fieldSpecialty" data-i18n-placeholder="doctors.modal.specialtyPlaceholder">
+            </div>
+            <div class="col-6">
+              <label class="form-label" data-i18n="doctors.modal.hospital">Hospital / company (optional)</label>
+              <input type="text" class="form-control" id="fieldHospital" data-i18n-placeholder="doctors.modal.hospitalPlaceholder">
+            </div>
+          </div>
+          <div class="row g-3 mb-3">
+            <div class="col-6">
+              <label class="form-label" data-i18n="doctors.modal.city">City</label>
+              <input type="text" class="form-control" id="fieldCity">
+            </div>
+            <div class="col-6">
+              <label class="form-label" data-i18n="doctors.modal.country">Country</label>
+              <input type="text" class="form-control" id="fieldCountry">
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" data-i18n="doctors.modal.status">Status</label>
+            <select class="form-select" id="fieldStatus">
+              <option value="Active" data-i18n="doctors.filterActive">Active</option>
+              <option value="Inactive" data-i18n="doctors.filterInactive">Inactive</option>
+            </select>
+          </div>
+          <div class="mb-1">
+            <label class="form-label" data-i18n="doctors.modal.notes">Notes</label>
+            <textarea class="form-control" id="fieldNotes" rows="2" data-i18n-placeholder="doctors.modal.notesPlaceholder"></textarea>
+          </div>
+          <div class="small text-secondary" data-i18n="doctors.modal.requiredHint">Name and mobile number are required.</div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">Cancel</button>
+          <button type="submit" class="btn btn-mc-primary" data-i18n="common.save">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="assets/js/i18n.js"></script>
+<script src="assets/js/app.js"></script>
+<script src="assets/js/api.js"></script>
+<script src="assets/js/auth.js"></script>
+<script src="assets/js/doctors.js"></script>
+<script>
+  MCAuth.guard();
+  const session = MCAuth.getSession();
+  if (session) document.getElementById("userInitials").textContent = (session.name || session.username || "A").slice(0, 1).toUpperCase();
+  document.getElementById("logoutLink").addEventListener("click", (e) => { e.preventDefault(); MCAuth.logout(); });
+  document.querySelectorAll('.sidebar .nav-link[data-unbuilt="true"]').forEach((link) => {
+    link.addEventListener("click", (e) => { e.preventDefault(); MCApp.toast(I18N.t("common.comingSoon")); });
+  });
+</script>
+</body>
+</html>
