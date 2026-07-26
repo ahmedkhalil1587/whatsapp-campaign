@@ -1,0 +1,116 @@
+{
+  "dir": "rtl",
+  "meta": {
+    "appName": "ميدكونكت للحملات"
+  },
+  "nav": {
+    "dashboard": "لوحة التحكم",
+    "campaigns": "الحملات",
+    "doctors": "الأطباء",
+    "templates": "القوالب",
+    "history": "السجل",
+    "settings": "الإعدادات",
+    "logout": "تسجيل الخروج"
+  },
+  "topbar": {
+    "search": "بحث...",
+    "darkMode": "الوضع الداكن",
+    "lightMode": "الوضع الفاتح",
+    "profile": "الملف الشخصي",
+    "language": "اللغة"
+  },
+  "login": {
+    "title": "تسجيل الدخول إلى مساحة العمل",
+    "subtitle": "أرسل تحديثات واتساب موثوقة لشبكة الأطباء لديك.",
+    "username": "اسم المستخدم",
+    "usernamePlaceholder": "مثال: omar.hassan",
+    "password": "كلمة المرور",
+    "passwordPlaceholder": "أدخل كلمة المرور",
+    "remember": "تذكرني على هذا الجهاز",
+    "submit": "تسجيل الدخول",
+    "submitting": "جارٍ تسجيل الدخول...",
+    "forgot": "نسيت كلمة المرور؟",
+    "footer": "مصمم لفرق المؤتمرات الطبية",
+    "errorRequired": "من فضلك أدخل اسم المستخدم وكلمة المرور.",
+    "errorInvalid": "اسم المستخدم أو كلمة المرور غير صحيحة.",
+    "demoHint": "دخول تجريبي: admin / admin123"
+  },
+  "dashboard": {
+    "welcome": "أهلاً بعودتك",
+    "welcomeSub": "ده ملخص حملاتك النهاردة.",
+    "newCampaign": "حملة جديدة",
+    "stats": {
+      "totalDoctors": "إجمالي الأطباء",
+      "totalCampaigns": "إجمالي الحملات",
+      "messagesSent": "رسائل مرسلة",
+      "delivered": "تم التسليم",
+      "read": "تمت القراءة",
+      "failed": "فشلت"
+    },
+    "charts": {
+      "performanceTitle": "أداء التسليم",
+      "performanceSub": "آخر 7 حملات",
+      "statusTitle": "توزيع حالة الرسائل",
+      "sent": "مرسلة",
+      "delivered": "تم التسليم",
+      "read": "تمت القراءة",
+      "failed": "فشلت"
+    },
+    "recent": {
+      "title": "أحدث الحملات",
+      "viewAll": "عرض الكل",
+      "name": "الحملة",
+      "date": "التاريخ",
+      "recipients": "المستلمون",
+      "delivered": "تم التسليم",
+      "status": "الحالة"
+    },
+    "status": {
+      "completed": "مكتملة",
+      "scheduled": "مجدولة",
+      "inProgress": "قيد التنفيذ",
+      "draft": "مسودة"
+    },
+    "empty": "لا توجد حملات بعد. ابدأ بإنشاء أول حملة.",
+    "loading": "جارٍ تحميل لوحة التحكم..."
+  },
+  "common": {
+    "loading": "جارٍ التحميل...",
+    "save": "حفظ",
+    "cancel": "إلغاء",
+    "close": "إغلاق",
+    "error": "حدث خطأ ما. حاول مرة أخرى.",
+    "comingSoon": "هذه الصفحة قادمة في مرحلة البناء القادمة."
+  },
+  "settings": {
+    "title": "الإعدادات",
+    "subtitle": "اربط الباك إند بتاعك على Google Sheets وحساب واتساب بيزنس.",
+    "backendTitle": "باك إند Google Apps Script",
+    "backendSub": "الصق رابط الـ Web App اللي طلع لك بعد نشر backend/Code.gs.",
+    "backendUrl": "رابط Apps Script Web App",
+    "backendUrlPlaceholder": "https://script.google.com/macros/s/XXXXX/exec",
+    "testConnection": "اختبار الاتصال",
+    "testing": "جارٍ الاختبار...",
+    "testOk": "تم الاتصال بنجاح.",
+    "testFail": "تعذّر الوصول لهذا الرابط. تأكد منه ومن أن صلاحية النشر \"Anyone\".",
+    "waTitle": "Meta WhatsApp Cloud API",
+    "waSub": "دي بتتخزن بأمان على السيرفر (Script Properties)، مش في المتصفح أبدًا.",
+    "phoneNumberId": "Phone Number ID",
+    "businessId": "WhatsApp Business Account ID",
+    "accessToken": "Access Token",
+    "accessTokenPlaceholder": "اتركه فارغًا للاحتفاظ بالتوكن المحفوظ حاليًا",
+    "webhookToken": "Webhook Verify Token",
+    "webhookTokenPlaceholder": "أي نص سري تختاره",
+    "tokenSavedBadge": "فيه توكن محفوظ بالفعل",
+    "tokenMissingBadge": "لا يوجد توكن محفوظ",
+    "brandTitle": "الهوية البصرية",
+    "brandSub": "بتظهر في كل صفحات التطبيق.",
+    "companyLogo": "رابط شعار الشركة",
+    "primaryColor": "اللون الأساسي",
+    "saveBackend": "حفظ رابط الباك إند",
+    "saveWa": "حفظ إعدادات واتساب",
+    "saveBrand": "حفظ الهوية البصرية",
+    "savedToast": "تم الحفظ بنجاح.",
+    "notConfiguredYet": "لسه مش متصل — التطبيق شغال ببيانات تجريبية."
+  }
+}

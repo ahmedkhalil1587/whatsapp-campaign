@@ -1,0 +1,116 @@
+{
+  "dir": "ltr",
+  "meta": {
+    "appName": "MedConnect Campaigns"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "campaigns": "Campaigns",
+    "doctors": "Doctors",
+    "templates": "Templates",
+    "history": "History",
+    "settings": "Settings",
+    "logout": "Log out"
+  },
+  "topbar": {
+    "search": "Search...",
+    "darkMode": "Dark mode",
+    "lightMode": "Light mode",
+    "profile": "Profile",
+    "language": "Language"
+  },
+  "login": {
+    "title": "Sign in to your workspace",
+    "subtitle": "Send trusted WhatsApp updates to your doctor network.",
+    "username": "Username",
+    "usernamePlaceholder": "e.g. omar.hassan",
+    "password": "Password",
+    "passwordPlaceholder": "Enter your password",
+    "remember": "Remember me on this device",
+    "submit": "Sign in",
+    "submitting": "Signing in...",
+    "forgot": "Forgot password?",
+    "footer": "Built for medical conference teams",
+    "errorRequired": "Please enter both username and password.",
+    "errorInvalid": "Incorrect username or password.",
+    "demoHint": "Demo access: admin / admin123"
+  },
+  "dashboard": {
+    "welcome": "Welcome back",
+    "welcomeSub": "Here's what's happening with your campaigns today.",
+    "newCampaign": "New campaign",
+    "stats": {
+      "totalDoctors": "Total Doctors",
+      "totalCampaigns": "Total Campaigns",
+      "messagesSent": "Messages Sent",
+      "delivered": "Delivered",
+      "read": "Read",
+      "failed": "Failed"
+    },
+    "charts": {
+      "performanceTitle": "Delivery performance",
+      "performanceSub": "Last 7 campaigns",
+      "statusTitle": "Message status split",
+      "sent": "Sent",
+      "delivered": "Delivered",
+      "read": "Read",
+      "failed": "Failed"
+    },
+    "recent": {
+      "title": "Recent campaigns",
+      "viewAll": "View all",
+      "name": "Campaign",
+      "date": "Date",
+      "recipients": "Recipients",
+      "delivered": "Delivered",
+      "status": "Status"
+    },
+    "status": {
+      "completed": "Completed",
+      "scheduled": "Scheduled",
+      "inProgress": "In progress",
+      "draft": "Draft"
+    },
+    "empty": "No campaigns yet. Start by creating your first one.",
+    "loading": "Loading your dashboard..."
+  },
+  "common": {
+    "loading": "Loading...",
+    "save": "Save",
+    "cancel": "Cancel",
+    "close": "Close",
+    "error": "Something went wrong. Please try again.",
+    "comingSoon": "This page is coming in the next build phase."
+  },
+  "settings": {
+    "title": "Settings",
+    "subtitle": "Connect your Google Sheets backend and WhatsApp Business account.",
+    "backendTitle": "Google Apps Script backend",
+    "backendSub": "Paste the Web App URL you got after deploying backend/Code.gs.",
+    "backendUrl": "Apps Script Web App URL",
+    "backendUrlPlaceholder": "https://script.google.com/macros/s/XXXXX/exec",
+    "testConnection": "Test connection",
+    "testing": "Testing...",
+    "testOk": "Connected successfully.",
+    "testFail": "Could not reach this URL. Double-check it and that the deployment access is set to \"Anyone\".",
+    "waTitle": "Meta WhatsApp Cloud API",
+    "waSub": "These are stored securely on the server (Script Properties), never in the browser.",
+    "phoneNumberId": "Phone Number ID",
+    "businessId": "WhatsApp Business Account ID",
+    "accessToken": "Access Token",
+    "accessTokenPlaceholder": "Leave blank to keep the current saved token",
+    "webhookToken": "Webhook Verify Token",
+    "webhookTokenPlaceholder": "Any secret string you choose",
+    "tokenSavedBadge": "A token is already saved",
+    "tokenMissingBadge": "No token saved yet",
+    "brandTitle": "Branding",
+    "brandSub": "Shown across the app.",
+    "companyLogo": "Company logo URL",
+    "primaryColor": "Primary color",
+    "saveBackend": "Save backend URL",
+    "saveWa": "Save WhatsApp settings",
+    "saveBrand": "Save branding",
+    "savedToast": "Saved successfully.",
+    "notConfiguredYet": "Not connected yet — the app is running on demo data."
+  }
+}
