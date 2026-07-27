@@ -1,0 +1,334 @@
+/**
+ * campaigns.js
+ * Two views on one page: a list of existing campaigns, and a builder
+ * (message + recipients + live WhatsApp-style preview + send/schedule).
+ * Talks to MCApi.Campaigns (create/list/send/retryFailed) and
+ * MCApi.Doctors.list() for the recipient picker.
+ */
+
+let allCampaigns = [];
+let allCustomers = [];
+let selectedRecipientIds = new Set();
+
+function t(key, vars) {
+  let str = I18N.t(key) || key;
+  if (vars) Object.keys(vars).forEach((k) => { str = str.replace(`{${k}}`, vars[k]); });
+  return str;
+}
+
+function escapeHtml(str) {
+  if (str === undefined || str === null) return "";
+  return String(str).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// ---------------------------------------------------------------
+// List view
+// ---------------------------------------------------------------
+
+async function loadCampaigns() {
+  const note = document.getElementById("notConnectedNoteList");
+  if (!MCApi.isConfigured()) {
+    note.classList.remove("d-none");
+    allCampaigns = [];
+    renderCampaignsList();
+    return;
+  }
+  note.classList.add("d-none");
+  try {
+    const res = await MCApi.Campaigns.list();
+    allCampaigns = (res.rows || []).slice().reverse();
+    renderCampaignsList();
+  } catch (err) {
+    MCApp.toast(I18N.t("common.error"), "error");
+  }
+}
+
+function statusBadgeClass(status) {
+  if (status === "Completed") return "completed";
+  if (status === "Scheduled") return "scheduled";
+  if (status === "Sending" || status === "In progress") return "inProgress";
+  return "draft";
+}
+
+function renderCampaignsList() {
+  const body = document.getElementById("campaignsBody");
+  if (allCampaigns.length === 0) {
+    body.innerHTML = `<tr><td colspan="7" class="text-center text-secondary py-4">${I18N.t("campaigns.empty")}</td></tr>`;
+    return;
+  }
+  const dateFmt = new Intl.DateTimeFormat(I18N.lang === "ar" ? "ar-EG" : "en-US", { year: "numeric", month: "short", day: "numeric" });
+  body.innerHTML = allCampaigns.map((c) => `
+    <tr>
+      <td class="fw-semibold">${escapeHtml(c.Name)}</td>
+      <td><span class="badge-status ${statusBadgeClass(c.Status)}">${escapeHtml(c.Status || "Draft")}</span></td>
+      <td class="text-secondary">${c.CreatedAt ? dateFmt.format(new Date(c.CreatedAt)) : "—"}</td>
+      <td>${Number(c.Sent || 0)}</td>
+      <td>${Number(c.Delivered || 0)}</td>
+      <td>${Number(c.Failed || 0)}</td>
+      <td>
+        ${Number(c.Failed || 0) > 0 ? `<button class="btn btn-sm btn-outline-secondary retry-btn" data-id="${c.ID}">${I18N.t("campaigns.retryFailed")}</button>` : ""}
+        <button class="btn btn-sm btn-outline-secondary duplicate-btn" data-id="${c.ID}">${I18N.t("campaigns.duplicate")}</button>
+      </td>
+    </tr>`).join("");
+
+  document.querySelectorAll(".retry-btn").forEach((btn) => btn.addEventListener("click", () => retryFailed(btn.getAttribute("data-id"))));
+  document.querySelectorAll(".duplicate-btn").forEach((btn) => btn.addEventListener("click", () => duplicateCampaign(btn.getAttribute("data-id"))));
+}
+
+async function retryFailed(id) {
+  try {
+    const res = await MCApi.Campaigns.retryFailed(id);
+    MCApp.toast(t("campaigns.retrySuccess", { n: res.retried ?? 0 }));
+    await loadCampaigns();
+  } catch (err) {
+    MCApp.toast(I18N.t("common.error"), "error");
+  }
+}
+
+function duplicateCampaign(id) {
+  const c = allCampaigns.find((x) => String(x.ID) === String(id));
+  if (!c) return;
+  showFormView();
+  document.getElementById("fieldCampaignName").value = (c.Name || "") + " (copy)";
+  document.getElementById("fieldMessage").value = c.Message || "";
+  document.getElementById("fieldImageUrl").value = c.ImageUrl || "";
+  document.getElementById("fieldPdfUrl").value = c.PdfUrl || "";
+  if (c.RecipientIds) {
+    document.getElementById("modeCustom").checked = true;
+    selectedRecipientIds = new Set(String(c.RecipientIds).split(",").map((s) => s.trim()).filter(Boolean));
+    toggleRecipientMode();
+  }
+  updatePreview();
+  MCApp.toast(I18N.t("campaigns.duplicateToast"));
+}
+
+// ---------------------------------------------------------------
+// View switching
+// ---------------------------------------------------------------
+
+function showListView() {
+  document.getElementById("listView").classList.remove("d-none");
+  document.getElementById("formView").classList.add("d-none");
+  loadCampaigns();
+}
+
+async function showFormView() {
+  document.getElementById("listView").classList.add("d-none");
+  document.getElementById("formView").classList.remove("d-none");
+  resetForm();
+  await loadCustomersForPicker();
+}
+
+function resetForm() {
+  document.getElementById("fieldCampaignName").value = "";
+  document.getElementById("fieldMessage").value = "";
+  document.getElementById("fieldImageUrl").value = "";
+  document.getElementById("fieldPdfUrl").value = "";
+  document.getElementById("modeAll").checked = true;
+  document.getElementById("sendNowRadio").checked = true;
+  document.getElementById("fieldScheduleAt").value = "";
+  selectedRecipientIds.clear();
+  toggleRecipientMode();
+  toggleSendMode();
+  updatePreview();
+}
+
+// ---------------------------------------------------------------
+// Recipients
+// ---------------------------------------------------------------
+
+async function loadCustomersForPicker() {
+  if (!MCApi.isConfigured()) { allCustomers = []; renderRecipientList(); updateAllModeHint(); return; }
+  try {
+    const res = await MCApi.Doctors.list();
+    allCustomers = res.rows || [];
+  } catch (err) {
+    allCustomers = [];
+  }
+  renderRecipientList();
+  updateAllModeHint();
+}
+
+function updateAllModeHint() {
+  const activeCount = allCustomers.filter((d) => d.Status === "Active").length;
+  document.getElementById("allModeHint").textContent = t("campaigns.recipientsAllHint", { n: activeCount });
+}
+
+function renderRecipientList() {
+  const list = document.getElementById("recipientList");
+  const q = document.getElementById("recipientSearch").value.trim().toLowerCase();
+  const rows = allCustomers.filter((d) => !q || String(d.Name || "").toLowerCase().includes(q) || String(d.Mobile || "").includes(q));
+
+  if (rows.length === 0) {
+    list.innerHTML = `<div class="p-3 text-center text-secondary small">${I18N.t("doctors.empty")}</div>`;
+  } else {
+    list.innerHTML = rows.map((d) => `
+      <label class="recipient-row mb-0">
+        <input type="checkbox" class="recipient-checkbox" value="${d.ID}" ${selectedRecipientIds.has(String(d.ID)) ? "checked" : ""}>
+        <span class="fw-semibold">${escapeHtml(d.Name)}</span>
+        <span class="text-secondary" dir="ltr">${escapeHtml(d.Mobile)}</span>
+      </label>`).join("");
+    list.querySelectorAll(".recipient-checkbox").forEach((cb) => {
+      cb.addEventListener("change", () => {
+        if (cb.checked) selectedRecipientIds.add(cb.value); else selectedRecipientIds.delete(cb.value);
+        updateRecipientCount();
+        updatePreview();
+      });
+    });
+  }
+  updateRecipientCount();
+}
+
+function updateRecipientCount() {
+  const el = document.getElementById("recipientSelectedCount");
+  el.textContent = selectedRecipientIds.size > 0
+    ? t("campaigns.recipientsSelectedCount", { n: selectedRecipientIds.size })
+    : I18N.t("campaigns.recipientsNone");
+}
+
+function toggleRecipientMode() {
+  const isCustom = document.getElementById("modeCustom").checked;
+  document.getElementById("customModeBox").classList.toggle("d-none", !isCustom);
+  document.getElementById("allModeHint").classList.toggle("d-none", isCustom);
+}
+
+// ---------------------------------------------------------------
+// Send mode
+// ---------------------------------------------------------------
+
+function toggleSendMode() {
+  const isLater = document.getElementById("sendLaterRadio").checked;
+  document.getElementById("scheduleBox").classList.toggle("d-none", !isLater);
+  document.getElementById("submitCampaignLabel").textContent = isLater
+    ? I18N.t("campaigns.submitSchedule")
+    : I18N.t("campaigns.submitSendNow");
+}
+
+// ---------------------------------------------------------------
+// Live preview
+// ---------------------------------------------------------------
+
+function renderMessagePreview(rawMessage, sampleDoctor) {
+  const d = sampleDoctor || { Name: I18N.t("campaigns.previewSampleName"), Specialty: "", Hospital: "", City: "" };
+  return (rawMessage || "")
+    .replace(/{{\s*doctor_name\s*}}/g, d.Name || "")
+    .replace(/{{\s*specialty\s*}}/g, d.Specialty || "")
+    .replace(/{{\s*hospital\s*}}/g, d.Hospital || "")
+    .replace(/{{\s*city\s*}}/g, d.City || "");
+}
+
+function updatePreview() {
+  const message = document.getElementById("fieldMessage").value;
+  const imageUrl = document.getElementById("fieldImageUrl").value.trim();
+  const body = document.getElementById("waPreviewBody");
+
+  if (!message.trim() && !imageUrl) {
+    body.innerHTML = `<div class="wa-empty" data-i18n="campaigns.previewEmpty">${I18N.t("campaigns.previewEmpty")}</div>`;
+    return;
+  }
+
+  let sampleDoctor = null;
+  if (document.getElementById("modeCustom").checked && selectedRecipientIds.size > 0) {
+    const firstId = Array.from(selectedRecipientIds)[0];
+    sampleDoctor = allCustomers.find((d) => String(d.ID) === String(firstId));
+  }
+  const text = renderMessagePreview(message, sampleDoctor);
+  const now = new Date();
+  const time = now.toLocaleTimeString(I18N.lang === "ar" ? "ar-EG" : "en-US", { hour: "2-digit", minute: "2-digit" });
+
+  body.innerHTML = `
+    <div class="wa-bubble">
+      ${imageUrl ? `<img src="${escapeHtml(imageUrl)}" onerror="this.style.display='none'">` : ""}
+      <div>${escapeHtml(text).replace(/\n/g, "<br>")}</div>
+      <div class="wa-time">${time} <i class="bi bi-check2-all" style="color:#53bdeb;"></i></div>
+    </div>`;
+}
+
+// ---------------------------------------------------------------
+// Submit
+// ---------------------------------------------------------------
+
+async function submitCampaign() {
+  const name = document.getElementById("fieldCampaignName").value.trim();
+  const message = document.getElementById("fieldMessage").value.trim();
+  const imageUrl = document.getElementById("fieldImageUrl").value.trim();
+  const pdfUrl = document.getElementById("fieldPdfUrl").value.trim();
+  const isCustom = document.getElementById("modeCustom").checked;
+  const isLater = document.getElementById("sendLaterRadio").checked;
+  const scheduleAt = document.getElementById("fieldScheduleAt").value;
+
+  if (!name) { MCApp.toast(I18N.t("campaigns.validationName"), "error"); return; }
+  if (!message) { MCApp.toast(I18N.t("campaigns.validationMessage"), "error"); return; }
+  if (isCustom && selectedRecipientIds.size === 0) { MCApp.toast(I18N.t("campaigns.validationRecipients"), "error"); return; }
+  if (isLater && (!scheduleAt || new Date(scheduleAt) <= new Date())) { MCApp.toast(I18N.t("campaigns.validationDate"), "error"); return; }
+  if (!MCApi.isConfigured()) { MCApp.toast(I18N.t("common.error"), "error"); return; }
+
+  const recipientCount = isCustom ? selectedRecipientIds.size : allCustomers.filter((d) => d.Status === "Active").length;
+  if (!isLater && !confirm(t("campaigns.confirmSendNow", { n: recipientCount }))) return;
+
+  const btn = document.getElementById("submitCampaignBtn");
+  const label = document.getElementById("submitCampaignLabel");
+  const originalLabel = label.textContent;
+  btn.disabled = true;
+  label.textContent = I18N.t("campaigns.submitSending");
+
+  try {
+    const campaignPayload = {
+      Name: name,
+      Message: message,
+      ImageUrl: imageUrl,
+      PdfUrl: pdfUrl,
+      RecipientIds: isCustom ? Array.from(selectedRecipientIds).join(",") : "",
+      Status: isLater ? "Scheduled" : "Draft",
+      ScheduledAt: isLater ? new Date(scheduleAt).toISOString() : "",
+    };
+    const createRes = await MCApi.Campaigns.create(campaignPayload);
+    const campaignId = createRes.row && createRes.row.ID;
+
+    if (isLater) {
+      MCApp.toast(I18N.t("campaigns.scheduledSuccess"));
+    } else {
+      const sendRes = await MCApi.Campaigns.send(campaignId);
+      MCApp.toast(t("campaigns.sentSuccess", { sent: sendRes.sent ?? 0, failed: sendRes.failed ?? 0 }));
+    }
+    showListView();
+  } catch (err) {
+    MCApp.toast(I18N.t("common.error"), "error");
+  } finally {
+    btn.disabled = false;
+    label.textContent = originalLabel;
+  }
+}
+
+// ---------------------------------------------------------------
+// Wiring
+// ---------------------------------------------------------------
+
+document.addEventListener("DOMContentLoaded", () => {
+  setTimeout(loadCampaigns, 60);
+
+  document.getElementById("newCampaignBtn").addEventListener("click", showFormView);
+  document.getElementById("backToListBtn").addEventListener("click", showListView);
+
+  document.getElementById("fieldMessage").addEventListener("input", updatePreview);
+  document.getElementById("fieldImageUrl").addEventListener("input", updatePreview);
+  document.querySelectorAll('input[name="recipientMode"]').forEach((r) => r.addEventListener("change", () => { toggleRecipientMode(); updatePreview(); }));
+  document.querySelectorAll('input[name="sendMode"]').forEach((r) => r.addEventListener("change", toggleSendMode));
+  document.getElementById("recipientSearch").addEventListener("input", renderRecipientList);
+  document.getElementById("submitCampaignBtn").addEventListener("click", submitCampaign);
+
+  document.querySelectorAll(".var-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const textarea = document.getElementById("fieldMessage");
+      const varText = btn.getAttribute("data-var");
+      const start = textarea.selectionStart || textarea.value.length;
+      const end = textarea.selectionEnd || textarea.value.length;
+      textarea.value = textarea.value.slice(0, start) + varText + textarea.value.slice(end);
+      textarea.focus();
+      textarea.selectionStart = textarea.selectionEnd = start + varText.length;
+      updatePreview();
+    });
+  });
+});
+
+I18N.onChange(() => { renderCampaignsList(); updatePreview(); updateRecipientCount(); });

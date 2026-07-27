@@ -6,7 +6,7 @@
  *
  * Sheet tabs expected (create with these exact names/headers):
  *   Doctors    : ID | Name | Mobile | Specialty | Hospital | City | Country | Status | Notes
- *   Campaigns  : ID | Name | Message | ImageUrl | PdfUrl | Status | ScheduledAt | CreatedAt | Sent | Delivered | Read | Failed
+ *   Campaigns  : ID | Name | Message | ImageUrl | PdfUrl | Status | ScheduledAt | CreatedAt | Sent | Delivered | Read | Failed | RecipientIds
  *   Templates  : ID | Name | Body
  *   Logs       : Timestamp | CampaignID | DoctorID | MobileNumber | WaMessageId | Status
  *   Users      : Username | Password | Name | Role
@@ -305,7 +305,13 @@ function sendCampaign_(campaignId) {
   var campaign = campaigns.find(function (c) { return String(c.ID) === String(campaignId); });
   if (!campaign) return { ok: false, error: "Campaign not found" };
 
-  var doctors = sheetToObjects_("Doctors").filter(function (d) { return d.Status === "Active"; });
+  var recipientIds = campaign.RecipientIds
+    ? String(campaign.RecipientIds).split(",").map(function (s) { return s.trim(); }).filter(Boolean)
+    : null;
+  var doctors = sheetToObjects_("Doctors").filter(function (d) {
+    if (recipientIds && recipientIds.length) return recipientIds.indexOf(String(d.ID)) !== -1;
+    return d.Status === "Active";
+  });
   var sent = 0, failed = 0;
 
   doctors.forEach(function (doctor) {
@@ -357,6 +363,49 @@ function logMessage_(campaignId, doctorId, mobile, waMessageId, status) {
     WaMessageId: waMessageId,
     Status: status,
   });
+}
+
+// ---------------------------------------------------------------
+// Scheduling — a campaign saved with Status = "Scheduled" and a future
+// ScheduledAt gets picked up here and sent once its time arrives.
+// This function does nothing by itself; it needs a time-driven trigger
+// (see setupScheduleTrigger_ below) to actually run periodically.
+// ---------------------------------------------------------------
+
+function processScheduledCampaigns_() {
+  var campaigns = sheetToObjects_("Campaigns");
+  var now = new Date();
+  campaigns.forEach(function (c) {
+    if (c.Status !== "Scheduled" || !c.ScheduledAt) return;
+    var when = new Date(c.ScheduledAt);
+    if (when <= now) {
+      try {
+        sendCampaign_(c.ID);
+      } catch (err) {
+        updateRow_("Campaigns", c.ID, { Status: "Failed" });
+      }
+    }
+  });
+}
+
+/**
+ * Run this ONCE manually: open this file in the Apps Script editor,
+ * select "setupScheduleTrigger_" in the function dropdown at the top,
+ * and click "Run". It installs a trigger that calls
+ * processScheduledCampaigns_ every 10 minutes so scheduled campaigns
+ * actually go out without you needing to keep a tab open.
+ */
+function setupScheduleTrigger_() {
+  // Avoid creating duplicate triggers if this is run more than once.
+  ScriptApp.getProjectTriggers().forEach(function (trigger) {
+    if (trigger.getHandlerFunction() === "processScheduledCampaigns_") {
+      ScriptApp.deleteTrigger(trigger);
+    }
+  });
+  ScriptApp.newTrigger("processScheduledCampaigns_")
+    .timeBased()
+    .everyMinutes(10)
+    .create();
 }
 
 // ---------------------------------------------------------------

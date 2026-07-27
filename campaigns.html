@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MedConnect Campaigns — Campaigns</title>
+
+<link id="bootstrap-css" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=IBM+Plex+Sans+Arabic:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/style.css">
+<style>
+  /* WhatsApp preview styling, scoped to this page */
+  .wa-phone {
+    background: #E5DDD5;
+    border-radius: 16px;
+    overflow: hidden;
+    border: 1px solid var(--mc-border);
+    box-shadow: var(--mc-shadow);
+  }
+  .wa-phone-header {
+    background: #075E54;
+    color: #fff;
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: .88rem;
+    font-weight: 600;
+  }
+  .wa-phone-header .avatar {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: rgba(255,255,255,.25);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .wa-phone-body {
+    min-height: 260px;
+    padding: 16px 12px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+  }
+  .wa-bubble {
+    background: #DCF8C6;
+    border-radius: 10px;
+    padding: 8px 10px;
+    max-width: 88%;
+    align-self: flex-end;
+    font-size: .87rem;
+    color: #111;
+    box-shadow: 0 1px 1px rgba(0,0,0,.08);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .wa-bubble img { max-width: 100%; border-radius: 8px; margin-bottom: 6px; display: block; }
+  .wa-bubble .wa-time { font-size: .68rem; color: #667781; text-align: end; margin-top: 4px; }
+  .wa-empty { color: #6b7d76; font-size: .85rem; text-align: center; margin: auto; }
+  .var-btn {
+    font-size: .74rem;
+    padding: .18rem .5rem;
+    border-radius: 999px;
+    border: 1px solid var(--mc-border);
+    background: var(--mc-surface);
+    color: var(--mc-accent-dark);
+    font-weight: 600;
+  }
+  .var-btn:hover { background: var(--mc-primary-light); }
+  .recipient-row { display: flex; align-items: center; gap: 8px; padding: 6px 4px; border-bottom: 1px solid var(--mc-border); font-size: .85rem; }
+  .recipient-list { max-height: 220px; overflow-y: auto; border: 1px solid var(--mc-border); border-radius: var(--mc-radius-sm); }
+</style>
+</head>
+<body data-page="campaigns">
+
+<div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <span class="mark"><i class="bi bi-heart-pulse-fill"></i></span>
+      <span data-i18n="meta.appName">MedConnect Campaigns</span>
+    </div>
+    <nav class="nav flex-column">
+      <a class="nav-link" href="dashboard.html" data-page="dashboard">
+        <i class="bi bi-grid-1x2-fill"></i> <span data-i18n="nav.dashboard">Dashboard</span>
+      </a>
+      <a class="nav-link active" href="campaigns.html" data-page="campaigns">
+        <i class="bi bi-megaphone-fill"></i> <span data-i18n="nav.campaigns">Campaigns</span>
+      </a>
+      <a class="nav-link" href="doctors.html" data-page="doctors">
+        <i class="bi bi-person-badge-fill"></i> <span data-i18n="nav.doctors">Customers</span>
+      </a>
+      <a class="nav-link" href="#" data-page="templates" data-unbuilt="true">
+        <i class="bi bi-file-earmark-text-fill"></i> <span data-i18n="nav.templates">Templates</span>
+      </a>
+      <a class="nav-link" href="#" data-page="history" data-unbuilt="true">
+        <i class="bi bi-clock-history"></i> <span data-i18n="nav.history">History</span>
+      </a>
+      <div class="nav-section-label">—</div>
+      <a class="nav-link" href="settings.html" data-page="settings">
+        <i class="bi bi-gear-fill"></i> <span data-i18n="nav.settings">Settings</span>
+      </a>
+      <a class="nav-link" href="#" id="logoutLink">
+        <i class="bi bi-box-arrow-left"></i> <span data-i18n="nav.logout">Log out</span>
+      </a>
+    </nav>
+  </aside>
+
+  <div class="main-col">
+    <header class="topbar">
+      <button class="icon-btn d-lg-none" id="sidebarOpenBtn"><i class="bi bi-list"></i></button>
+      <div class="search-box">
+        <input type="text" class="form-control" data-i18n-placeholder="topbar.search" placeholder="Search...">
+      </div>
+      <div class="ms-auto d-flex align-items-center gap-2">
+        <div class="lang-toggle">
+          <button type="button" data-lang-option="en">EN</button>
+          <button type="button" data-lang-option="ar">AR</button>
+        </div>
+        <button type="button" class="icon-btn" id="themeToggleBtn"><i class="bi bi-moon-stars" id="themeToggleIcon"></i></button>
+        <div class="d-flex align-items-center gap-2 ps-2 border-start">
+          <div style="width:34px;height:34px;border-radius:50%;background:var(--mc-primary-light);color:var(--mc-primary);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.85rem;" id="userInitials">A</div>
+        </div>
+      </div>
+    </header>
+
+    <main class="content-area">
+
+      <!-- ============ LIST VIEW ============ -->
+      <div id="listView">
+        <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
+          <div>
+            <h1 class="h4 fw-bold mb-0" data-i18n="campaigns.title">Campaigns</h1>
+            <p class="text-secondary small mb-0" data-i18n="campaigns.subtitle">Write your message, preview it like WhatsApp, then send now or schedule it.</p>
+          </div>
+          <button class="btn btn-mc-primary d-flex align-items-center gap-2" id="newCampaignBtn">
+            <i class="bi bi-plus-lg"></i> <span data-i18n="campaigns.newCampaign">New campaign</span>
+          </button>
+        </div>
+
+        <div id="notConnectedNoteList" class="alert alert-warning py-2 small d-none" data-i18n="doctors.notConnected">
+          Connect your backend in Settings first to manage real data.
+        </div>
+
+        <div class="panel">
+          <div class="table-responsive">
+            <table class="table table-mc mb-0">
+              <thead>
+                <tr>
+                  <th data-i18n="campaigns.col.name">Campaign</th>
+                  <th data-i18n="campaigns.col.status">Status</th>
+                  <th data-i18n="campaigns.col.date">Date</th>
+                  <th data-i18n="campaigns.col.recipients">Recipients</th>
+                  <th data-i18n="campaigns.col.delivered">Delivered</th>
+                  <th data-i18n="campaigns.col.failed">Failed</th>
+                  <th data-i18n="campaigns.col.actions">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="campaignsBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ FORM VIEW ============ -->
+      <div id="formView" class="d-none">
+        <button class="btn btn-link ps-0 mb-2 text-decoration-none" id="backToListBtn">
+          <i class="bi bi-arrow-left"></i> <span data-i18n="campaigns.backToList">All campaigns</span>
+        </button>
+
+        <div class="row g-4">
+          <!-- Left: form -->
+          <div class="col-lg-7">
+            <div class="panel mb-3">
+              <div class="mb-3">
+                <label class="form-label fw-semibold" data-i18n="campaigns.campaignName">Campaign name</label>
+                <input type="text" class="form-control" id="fieldCampaignName" data-i18n-placeholder="campaigns.campaignNamePlaceholder">
+              </div>
+
+              <div class="mb-2">
+                <label class="form-label fw-semibold" data-i18n="campaigns.messageBody">Message</label>
+                <textarea class="form-control" id="fieldMessage" rows="6" data-i18n-placeholder="campaigns.messageBodyPlaceholder"></textarea>
+              </div>
+              <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                <span class="small text-secondary" data-i18n="campaigns.insertVariable">Insert:</span>
+                <button type="button" class="var-btn" data-var="{{doctor_name}}">{{doctor_name}}</button>
+                <button type="button" class="var-btn" data-var="{{specialty}}">{{specialty}}</button>
+                <button type="button" class="var-btn" data-var="{{hospital}}">{{hospital}}</button>
+                <button type="button" class="var-btn" data-var="{{city}}">{{city}}</button>
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label fw-semibold" data-i18n="campaigns.imageUrl">Image URL (optional)</label>
+                <input type="url" class="form-control" id="fieldImageUrl" data-i18n-placeholder="campaigns.imageUrlPlaceholder">
+              </div>
+              <div class="mb-1">
+                <label class="form-label fw-semibold" data-i18n="campaigns.pdfUrl">PDF URL (optional)</label>
+                <input type="url" class="form-control" id="fieldPdfUrl" data-i18n-placeholder="campaigns.pdfUrlPlaceholder">
+              </div>
+            </div>
+
+            <!-- Recipients -->
+            <div class="panel mb-3">
+              <div class="fw-semibold mb-2" data-i18n="campaigns.recipients">Recipients</div>
+              <div class="form-check mb-2">
+                <input class="form-check-input" type="radio" name="recipientMode" id="modeAll" value="all" checked>
+                <label class="form-check-label" for="modeAll" data-i18n="campaigns.recipientsAll">All active customers</label>
+              </div>
+              <div class="form-check mb-2">
+                <input class="form-check-input" type="radio" name="recipientMode" id="modeCustom" value="custom">
+                <label class="form-check-label" for="modeCustom" data-i18n="campaigns.recipientsCustom">Choose specific customers</label>
+              </div>
+
+              <div id="allModeHint" class="small text-secondary mb-1"></div>
+
+              <div id="customModeBox" class="d-none mt-2">
+                <input type="text" class="form-control form-control-sm mb-2" id="recipientSearch" data-i18n-placeholder="campaigns.recipientsSearchPlaceholder">
+                <div class="recipient-list" id="recipientList"></div>
+                <div class="small text-secondary mt-2" id="recipientSelectedCount"></div>
+              </div>
+            </div>
+
+            <!-- Send options -->
+            <div class="panel">
+              <div class="fw-semibold mb-2" data-i18n="campaigns.sendOptions">Sending</div>
+              <div class="form-check mb-2">
+                <input class="form-check-input" type="radio" name="sendMode" id="sendNowRadio" value="now" checked>
+                <label class="form-check-label" for="sendNowRadio" data-i18n="campaigns.sendNow">Send now</label>
+              </div>
+              <div class="form-check mb-2">
+                <input class="form-check-input" type="radio" name="sendMode" id="sendLaterRadio" value="later">
+                <label class="form-check-label" for="sendLaterRadio" data-i18n="campaigns.sendLater">Schedule for later</label>
+              </div>
+              <div id="scheduleBox" class="d-none mt-2 mb-2">
+                <label class="form-label small" data-i18n="campaigns.scheduleDateLabel">Date and time</label>
+                <input type="datetime-local" class="form-control" id="fieldScheduleAt">
+                <div class="small text-secondary mt-1" data-i18n="campaigns.schedulerNote">Scheduled sends require a one-time setup in Apps Script — see the README.</div>
+              </div>
+
+              <button type="button" class="btn btn-mc-primary w-100 mt-2" id="submitCampaignBtn">
+                <span id="submitCampaignLabel" data-i18n="campaigns.submitSendNow">Send campaign now</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Right: live preview -->
+          <div class="col-lg-5">
+            <div style="position:sticky;top:80px;">
+              <div class="fw-semibold mb-2" data-i18n="campaigns.previewTitle">WhatsApp preview</div>
+              <div class="wa-phone">
+                <div class="wa-phone-header">
+                  <div class="avatar"><i class="bi bi-person-fill"></i></div>
+                  <span id="previewHeaderName">MedConnect</span>
+                </div>
+                <div class="wa-phone-body" id="waPreviewBody">
+                  <div class="wa-empty" id="waPreviewEmpty" data-i18n="campaigns.previewEmpty">Start typing to see a live preview here.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="assets/js/i18n.js"></script>
+<script src="assets/js/app.js"></script>
+<script src="assets/js/api.js"></script>
+<script src="assets/js/auth.js"></script>
+<script src="assets/js/campaigns.js"></script>
+<script>
+  MCAuth.guard();
+  const session = MCAuth.getSession();
+  if (session) document.getElementById("userInitials").textContent = (session.name || session.username || "A").slice(0, 1).toUpperCase();
+  document.getElementById("logoutLink").addEventListener("click", (e) => { e.preventDefault(); MCAuth.logout(); });
+  document.querySelectorAll('.sidebar .nav-link[data-unbuilt="true"]').forEach((link) => {
+    link.addEventListener("click", (e) => { e.preventDefault(); MCApp.toast(I18N.t("common.comingSoon")); });
+  });
+</script>
+</body>
+</html>
