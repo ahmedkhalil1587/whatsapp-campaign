@@ -301,6 +301,55 @@ async function submitCampaign() {
 }
 
 // ---------------------------------------------------------------
+// Media upload (image / PDF) — reads the picked file as base64 and
+// sends it to the backend, which stores it in Google Drive and returns
+// a public link. That link is dropped straight into the URL field.
+// ---------------------------------------------------------------
+
+const MAX_UPLOAD_MB = 15;
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(",")[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function handleMediaUpload(file, urlFieldId, statusElId, uploadBtnId) {
+  const statusEl = document.getElementById(statusElId);
+  const btn = document.getElementById(uploadBtnId);
+  if (!file) return;
+
+  if (!MCApi.isConfigured()) { MCApp.toast(I18N.t("common.error"), "error"); return; }
+  if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
+    statusEl.classList.remove("d-none");
+    statusEl.classList.add("text-danger");
+    statusEl.textContent = t("campaigns.uploadTooBig", { n: MAX_UPLOAD_MB });
+    return;
+  }
+
+  btn.disabled = true;
+  statusEl.classList.remove("d-none", "text-danger", "text-success");
+  statusEl.textContent = I18N.t("campaigns.uploading");
+
+  try {
+    const base64 = await fileToBase64(file);
+    const res = await MCApi.Media.upload(file.name, file.type, base64);
+    document.getElementById(urlFieldId).value = res.url;
+    statusEl.classList.add("text-success");
+    statusEl.textContent = t("campaigns.uploadDone", { name: file.name });
+    updatePreview();
+  } catch (err) {
+    statusEl.classList.add("text-danger");
+    statusEl.textContent = I18N.t("campaigns.uploadFailed");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ---------------------------------------------------------------
 // Wiring
 // ---------------------------------------------------------------
 
@@ -316,6 +365,11 @@ document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll('input[name="sendMode"]').forEach((r) => r.addEventListener("change", toggleSendMode));
   document.getElementById("recipientSearch").addEventListener("input", renderRecipientList);
   document.getElementById("submitCampaignBtn").addEventListener("click", submitCampaign);
+
+  document.getElementById("uploadImageBtn").addEventListener("click", () => document.getElementById("imageFileInput").click());
+  document.getElementById("imageFileInput").addEventListener("change", (e) => handleMediaUpload(e.target.files[0], "fieldImageUrl", "imageUploadStatus", "uploadImageBtn"));
+  document.getElementById("uploadPdfBtn").addEventListener("click", () => document.getElementById("pdfFileInput").click());
+  document.getElementById("pdfFileInput").addEventListener("change", (e) => handleMediaUpload(e.target.files[0], "fieldPdfUrl", "pdfUploadStatus", "uploadPdfBtn"));
 
   document.querySelectorAll(".var-btn").forEach((btn) => {
     btn.addEventListener("click", () => {

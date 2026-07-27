@@ -88,6 +88,8 @@ function routeAction_(action, body) {
     case "templates.list":    return { ok: true, rows: sheetToObjects_("Templates") };
     case "templates.create":  return { ok: true, row: appendRow_("Templates", body.template) };
 
+    case "media.upload":      return uploadMedia_(body.filename, body.mimeType, body.base64);
+
     case "dashboard.stats":   return { ok: true, stats: buildDashboardStats_() };
 
     case "settings.get":      return { ok: true, settings: getPublicSettings_() };
@@ -246,6 +248,31 @@ function saveSettings_(settings) {
   if (settings.webhookVerifyToken !== undefined) props.setProperty("WA_WEBHOOK_VERIFY_TOKEN", settings.webhookVerifyToken);
   if (settings.accessToken) props.setProperty("WA_ACCESS_TOKEN", settings.accessToken); // only overwritten if provided
   return getPublicSettings_();
+}
+
+// ---------------------------------------------------------------
+// Media upload — images/PDFs picked in the browser are base64-encoded
+// and sent here, saved to a Drive folder, and shared "anyone with the
+// link can view" so WhatsApp Cloud API can fetch them by URL. There is
+// no traditional file server in this stack, so Drive plays that role.
+// ---------------------------------------------------------------
+
+function uploadMedia_(filename, mimeType, base64) {
+  if (!filename || !base64) throw new Error("Missing file data");
+  var folder = getOrCreateMediaFolder_();
+  var bytes = Utilities.base64Decode(base64);
+  var blob = Utilities.newBlob(bytes, mimeType || "application/octet-stream", filename);
+  var file = folder.createFile(blob);
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  var url = "https://drive.google.com/uc?export=download&id=" + file.getId();
+  return { ok: true, url: url, fileId: file.getId(), name: file.getName() };
+}
+
+function getOrCreateMediaFolder_() {
+  var name = "MedConnect Campaign Media";
+  var folders = DriveApp.getFoldersByName(name);
+  if (folders.hasNext()) return folders.next();
+  return DriveApp.createFolder(name);
 }
 
 // ---------------------------------------------------------------
@@ -439,4 +466,13 @@ function handleWebhookStatus_(payload) {
   } catch (err) {
     // Swallow — webhook delivery should never throw back to Meta.
   }
+}
+
+/**
+ * Plain wrapper with no trailing underscore, so it always shows up in the
+ * Apps Script editor's "Run" function dropdown. Select THIS one (not
+ * setupScheduleTrigger_) from the dropdown and click Run once.
+ */
+function runScheduleSetup() {
+  setupScheduleTrigger_();
 }

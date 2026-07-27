@@ -71,5 +71,9 @@ const MCApi = (() => {
     save: (settings) => call("settings.save", { settings }),
   };
 
-  return { call, getBaseUrl, setBaseUrl, isConfigured, Doctors, Campaigns, Templates, Dashboard, Settings };
+  const Media = {
+    upload: (filename, mimeType, base64) => call("media.upload", { filename, mimeType, base64 }),
+  };
+
+  return { call, getBaseUrl, setBaseUrl, isConfigured, Doctors, Campaigns, Templates, Dashboard, Settings, Media };
 })();
