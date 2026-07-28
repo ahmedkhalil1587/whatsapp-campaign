@@ -66,13 +66,49 @@ function renderCampaignsList() {
       <td>${Number(c.Delivered || 0)}</td>
       <td>${Number(c.Failed || 0)}</td>
       <td>
+        <button class="btn btn-sm btn-outline-secondary details-btn" data-id="${c.ID}">${I18N.t("campaigns.viewDetails")}</button>
         ${Number(c.Failed || 0) > 0 ? `<button class="btn btn-sm btn-outline-secondary retry-btn" data-id="${c.ID}">${I18N.t("campaigns.retryFailed")}</button>` : ""}
         <button class="btn btn-sm btn-outline-secondary duplicate-btn" data-id="${c.ID}">${I18N.t("campaigns.duplicate")}</button>
       </td>
     </tr>`).join("");
 
+  document.querySelectorAll(".details-btn").forEach((btn) => btn.addEventListener("click", () => openLogsModal(btn.getAttribute("data-id"))));
   document.querySelectorAll(".retry-btn").forEach((btn) => btn.addEventListener("click", () => retryFailed(btn.getAttribute("data-id"))));
   document.querySelectorAll(".duplicate-btn").forEach((btn) => btn.addEventListener("click", () => duplicateCampaign(btn.getAttribute("data-id"))));
+}
+
+let logsModal;
+
+function logStatusClass(status) {
+  const s = String(status || "");
+  if (s === "sent" || s === "delivered" || s === "read") return "completed";
+  if (s.indexOf("failed") === 0) return "draft";
+  return "scheduled";
+}
+
+async function openLogsModal(campaignId) {
+  const body = document.getElementById("logsModalBody");
+  body.innerHTML = `<tr><td colspan="3" class="text-center text-secondary py-4">${I18N.t("common.loading")}</td></tr>`;
+  if (!logsModal) logsModal = new bootstrap.Modal(document.getElementById("logsModal"));
+  logsModal.show();
+
+  try {
+    const res = await MCApi.Campaigns.logs(campaignId);
+    const rows = res.rows || [];
+    if (rows.length === 0) {
+      body.innerHTML = `<tr><td colspan="3" class="text-center text-secondary py-4">${I18N.t("campaigns.logsEmpty")}</td></tr>`;
+      return;
+    }
+    const dateFmt = new Intl.DateTimeFormat(I18N.lang === "ar" ? "ar-EG" : "en-US", { dateStyle: "short", timeStyle: "short" });
+    body.innerHTML = rows.map((l) => `
+      <tr>
+        <td dir="ltr">${escapeHtml(l.MobileNumber)}</td>
+        <td><span class="badge-status ${logStatusClass(l.Status)}">${escapeHtml(l.Status)}</span></td>
+        <td class="text-secondary">${l.Timestamp ? dateFmt.format(new Date(l.Timestamp)) : "—"}</td>
+      </tr>`).join("");
+  } catch (err) {
+    body.innerHTML = `<tr><td colspan="3" class="text-center text-danger py-4">${I18N.t("common.error")}</td></tr>`;
+  }
 }
 
 async function retryFailed(id) {

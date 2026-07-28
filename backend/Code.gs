@@ -84,6 +84,7 @@ function routeAction_(action, body) {
     case "campaigns.create":  return { ok: true, row: appendRow_("Campaigns", body.campaign) };
     case "campaigns.send":    return sendCampaign_(body.id);
     case "campaigns.retryFailed": return retryFailedMessages_(body.id);
+    case "campaigns.logs":     return { ok: true, rows: sheetToObjects_("Logs").filter(function (l) { return String(l.CampaignID) === String(body.id); }) };
 
     case "templates.list":    return { ok: true, rows: sheetToObjects_("Templates") };
     case "templates.create":  return { ok: true, row: appendRow_("Templates", body.template) };

@@ -228,6 +228,10 @@
     },
     "empty": "No campaigns yet. Create your first one.",
     "retryFailed": "Retry failed",
+    "viewDetails": "Details",
+    "logsTitle": "Delivery details",
+    "logsCol": { "mobile": "Mobile", "status": "Status", "time": "Time" },
+    "logsEmpty": "No delivery records for this campaign yet.",
     "duplicate": "Duplicate",
     "retrySuccess": "Retried {n} failed messages.",
     "duplicateToast": "Campaign duplicated as a new draft."
