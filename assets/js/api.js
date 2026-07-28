@@ -61,6 +61,8 @@ const MCApi = (() => {
   const Templates = {
     list: () => call("templates.list"),
     create: (template) => call("templates.create", { template }),
+    update: (id, template) => call("templates.update", { id, template }),
+    remove: (id) => call("templates.delete", { id }),
   };
 
   const Dashboard = {

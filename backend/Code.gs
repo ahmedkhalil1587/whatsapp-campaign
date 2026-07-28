@@ -6,7 +6,7 @@
  *
  * Sheet tabs expected (create with these exact names/headers):
  *   Doctors    : ID | Name | Mobile | Specialty | Hospital | City | Country | Status | Notes
- *   Campaigns  : ID | Name | Message | ImageUrl | PdfUrl | Status | ScheduledAt | CreatedAt | Sent | Delivered | Read | Failed | RecipientIds
+ *   Campaigns  : ID | Name | Message | ImageUrl | PdfUrl | Status | ScheduledAt | CreatedAt | Sent | Delivered | Read | Failed | RecipientIds | MessageType | TemplateName | TemplateLanguage | TemplateParams
  *   Templates  : ID | Name | Body
  *   Logs       : Timestamp | CampaignID | DoctorID | MobileNumber | WaMessageId | Status
  *   Users      : Username | Password | Name | Role
@@ -88,6 +88,8 @@ function routeAction_(action, body) {
 
     case "templates.list":    return { ok: true, rows: sheetToObjects_("Templates") };
     case "templates.create":  return { ok: true, row: appendRow_("Templates", body.template) };
+    case "templates.update":  return { ok: true, row: updateRow_("Templates", body.id, body.template) };
+    case "templates.delete":  return { ok: true, deleted: deleteRow_("Templates", body.id) };
 
     case "media.upload":      return uploadMedia_(body.filename, body.mimeType, body.base64);
 
@@ -280,24 +282,13 @@ function getOrCreateMediaFolder_() {
 // WhatsApp Cloud API — sending
 // ---------------------------------------------------------------
 
-function sendWhatsAppMessage_(toNumber, bodyText, mediaUrl) {
+function callWhatsAppApi_(payload) {
   var props = PropertiesService.getScriptProperties();
   var phoneNumberId = props.getProperty("WA_PHONE_NUMBER_ID");
   var accessToken = props.getProperty("WA_ACCESS_TOKEN");
   if (!phoneNumberId || !accessToken) throw new Error("WhatsApp credentials are not configured yet.");
 
   var url = "https://graph.facebook.com/v20.0/" + phoneNumberId + "/messages";
-  var payload = {
-    messaging_product: "whatsapp",
-    to: toNumber,
-    type: mediaUrl ? "image" : "text",
-  };
-  if (mediaUrl) {
-    payload.image = { link: mediaUrl, caption: bodyText };
-  } else {
-    payload.text = { body: bodyText };
-  }
-
   var response = UrlFetchApp.fetch(url, {
     method: "post",
     contentType: "application/json",
@@ -313,6 +304,46 @@ function sendWhatsAppMessage_(toNumber, bodyText, mediaUrl) {
   return data.messages && data.messages[0] && data.messages[0].id;
 }
 
+/** Free-form text or single-image message — only deliverable within the 24h customer service window. */
+function sendWhatsAppMessage_(toNumber, bodyText, mediaUrl) {
+  var payload = {
+    messaging_product: "whatsapp",
+    to: toNumber,
+    type: mediaUrl ? "image" : "text",
+  };
+  if (mediaUrl) {
+    payload.image = { link: mediaUrl, caption: bodyText };
+  } else {
+    payload.text = { body: bodyText };
+  }
+  return callWhatsAppApi_(payload);
+}
+
+/**
+ * Approved Meta message template — works outside the 24h window (first
+ * contact, re-engagement). templateName/languageCode must exactly match
+ * an approved template in WhatsApp Manager. paramValues fill {{1}}, {{2}}...
+ * in the template body, in order.
+ */
+function sendWhatsAppTemplateMessage_(toNumber, templateName, languageCode, paramValues) {
+  var payload = {
+    messaging_product: "whatsapp",
+    to: toNumber,
+    type: "template",
+    template: {
+      name: templateName,
+      language: { code: languageCode || "ar" },
+    },
+  };
+  if (paramValues && paramValues.length) {
+    payload.template.components = [{
+      type: "body",
+      parameters: paramValues.map(function (v) { return { type: "text", text: v || "" }; }),
+    }];
+  }
+  return callWhatsAppApi_(payload);
+}
+
 /** Fills {{doctor_name}}, {{specialty}}, {{hospital}}, {{city}} placeholders. */
 function renderTemplate_(template, doctor) {
   return template
@@ -320,6 +351,25 @@ function renderTemplate_(template, doctor) {
     .replace(/{{\s*specialty\s*}}/g, doctor.Specialty || "")
     .replace(/{{\s*hospital\s*}}/g, doctor.Hospital || "")
     .replace(/{{\s*city\s*}}/g, doctor.City || "");
+}
+
+/** Maps a doctor record to a field value by the short names used in TemplateParams (doctor_name/specialty/hospital/city). */
+function fieldValueForDoctor_(fieldName, doctor) {
+  var map = { doctor_name: doctor.Name, specialty: doctor.Specialty, hospital: doctor.Hospital, city: doctor.City };
+  return map[fieldName] || "";
+}
+
+/** Sends one message for one doctor, using free-form text/image or an approved template depending on the campaign's MessageType. */
+function sendOneCampaignMessage_(campaign, doctor) {
+  if (campaign.MessageType === "template") {
+    var paramFields = campaign.TemplateParams
+      ? String(campaign.TemplateParams).split(",").map(function (s) { return s.trim(); }).filter(Boolean)
+      : [];
+    var paramValues = paramFields.map(function (f) { return fieldValueForDoctor_(f, doctor); });
+    return sendWhatsAppTemplateMessage_(doctor.Mobile, campaign.TemplateName, campaign.TemplateLanguage, paramValues);
+  }
+  var text = renderTemplate_(campaign.Message, doctor);
+  return sendWhatsAppMessage_(doctor.Mobile, text, campaign.ImageUrl);
 }
 
 /**
@@ -344,8 +394,7 @@ function sendCampaign_(campaignId) {
 
   doctors.forEach(function (doctor) {
     try {
-      var text = renderTemplate_(campaign.Message, doctor);
-      var waMessageId = sendWhatsAppMessage_(doctor.Mobile, text, campaign.ImageUrl);
+      var waMessageId = sendOneCampaignMessage_(campaign, doctor);
       logMessage_(campaignId, doctor.ID, doctor.Mobile, waMessageId, "sent");
       sent++;
     } catch (err) {
@@ -371,8 +420,7 @@ function retryFailedMessages_(campaignId) {
     var doctor = doctors.find(function (d) { return String(d.ID) === String(log.DoctorID); });
     if (!doctor) return;
     try {
-      var text = renderTemplate_(campaign.Message, doctor);
-      var waMessageId = sendWhatsAppMessage_(doctor.Mobile, text, campaign.ImageUrl);
+      var waMessageId = sendOneCampaignMessage_(campaign, doctor);
       logMessage_(campaignId, doctor.ID, doctor.Mobile, waMessageId, "sent");
       retried++;
     } catch (err) {

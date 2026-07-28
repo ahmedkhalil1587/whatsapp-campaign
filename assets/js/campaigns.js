@@ -126,9 +126,21 @@ function duplicateCampaign(id) {
   if (!c) return;
   showFormView();
   document.getElementById("fieldCampaignName").value = (c.Name || "") + " (copy)";
-  document.getElementById("fieldMessage").value = c.Message || "";
-  document.getElementById("fieldImageUrl").value = c.ImageUrl || "";
-  document.getElementById("fieldPdfUrl").value = c.PdfUrl || "";
+
+  if (c.MessageType === "template") {
+    document.getElementById("msgTypeTemplate").checked = true;
+    document.getElementById("fieldTemplateName").value = c.TemplateName || "";
+    document.getElementById("fieldTemplateLang").value = c.TemplateLanguage || "ar";
+    templateParamOrder = c.TemplateParams ? String(c.TemplateParams).split(",").map((s) => s.trim()).filter(Boolean) : [];
+    renderTemplateParamChips();
+  } else {
+    document.getElementById("msgTypeText").checked = true;
+    document.getElementById("fieldMessage").value = c.Message || "";
+    document.getElementById("fieldImageUrl").value = c.ImageUrl || "";
+    document.getElementById("fieldPdfUrl").value = c.PdfUrl || "";
+  }
+  toggleMessageType();
+
   if (c.RecipientIds) {
     document.getElementById("modeCustom").checked = true;
     selectedRecipientIds = new Set(String(c.RecipientIds).split(",").map((s) => s.trim()).filter(Boolean));
@@ -160,13 +172,52 @@ function resetForm() {
   document.getElementById("fieldMessage").value = "";
   document.getElementById("fieldImageUrl").value = "";
   document.getElementById("fieldPdfUrl").value = "";
+  document.getElementById("msgTypeText").checked = true;
+  document.getElementById("fieldTemplateName").value = "";
+  document.getElementById("fieldTemplateLang").value = "ar";
+  templateParamOrder = [];
+  renderTemplateParamChips();
   document.getElementById("modeAll").checked = true;
   document.getElementById("sendNowRadio").checked = true;
   document.getElementById("fieldScheduleAt").value = "";
   selectedRecipientIds.clear();
+  toggleMessageType();
   toggleRecipientMode();
   toggleSendMode();
   updatePreview();
+}
+
+// ---------------------------------------------------------------
+// Message type (free-form vs approved Meta template)
+// ---------------------------------------------------------------
+
+let templateParamOrder = [];
+const TPL_VAR_LABELS = { doctor_name: "{{doctor_name}}", specialty: "{{specialty}}", hospital: "{{hospital}}", city: "{{city}}" };
+
+function toggleMessageType() {
+  const isTemplate = document.getElementById("msgTypeTemplate").checked;
+  document.getElementById("textModeBox").classList.toggle("d-none", isTemplate);
+  document.getElementById("templateModeBox").classList.toggle("d-none", !isTemplate);
+}
+
+function renderTemplateParamChips() {
+  const box = document.getElementById("templateParamChips");
+  if (templateParamOrder.length === 0) {
+    box.innerHTML = `<span class="small text-secondary" data-i18n="campaigns.templateParamsEmpty">${I18N.t("campaigns.templateParamsEmpty")}</span>`;
+    return;
+  }
+  box.innerHTML = templateParamOrder.map((field, i) => `
+    <span class="var-btn d-inline-flex align-items-center gap-1" style="cursor:default;">
+      {{${i + 1}}} = ${TPL_VAR_LABELS[field] || field}
+      <button type="button" class="btn-close btn-close-sm remove-param-btn" data-index="${i}" style="font-size:.55rem;"></button>
+    </span>`).join("");
+  box.querySelectorAll(".remove-param-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      templateParamOrder.splice(Number(btn.getAttribute("data-index")), 1);
+      renderTemplateParamChips();
+      updatePreview();
+    });
+  });
 }
 
 // ---------------------------------------------------------------
@@ -317,9 +368,36 @@ function renderMessagePreview(rawMessage, sampleDoctor) {
 }
 
 function updatePreview() {
+  const isTemplate = document.getElementById("msgTypeTemplate").checked;
+  const body = document.getElementById("waPreviewBody");
+
+  if (isTemplate) {
+    const templateName = document.getElementById("fieldTemplateName").value.trim();
+    if (!templateName && templateParamOrder.length === 0) {
+      body.innerHTML = `<div class="wa-empty">${I18N.t("campaigns.templatePreviewEmpty")}</div>`;
+      return;
+    }
+    let sampleDoctor = null;
+    if (document.getElementById("modeCustom").checked && selectedRecipientIds.size > 0) {
+      const firstId = Array.from(selectedRecipientIds)[0];
+      sampleDoctor = allCustomers.find((d) => String(d.ID) === String(firstId));
+    }
+    const d = sampleDoctor || { Name: I18N.t("campaigns.previewSampleName"), Specialty: "", Hospital: "", City: "" };
+    const fieldMap = { doctor_name: d.Name, specialty: d.Specialty, hospital: d.Hospital, city: d.City };
+    const paramsHtml = templateParamOrder.length
+      ? templateParamOrder.map((f, i) => `<div><strong>{{${i + 1}}}</strong> → ${escapeHtml(fieldMap[f] || "")}</div>`).join("")
+      : `<div class="text-secondary">${I18N.t("campaigns.templateParamsEmpty")}</div>`;
+    body.innerHTML = `
+      <div class="wa-bubble" style="max-width:96%;">
+        <div class="fw-semibold mb-1"><i class="bi bi-file-earmark-text-fill"></i> ${escapeHtml(templateName) || "—"}</div>
+        <div class="small">${paramsHtml}</div>
+        <div class="small text-secondary mt-2">${I18N.t("campaigns.templatePreviewNote")}</div>
+      </div>`;
+    return;
+  }
+
   const message = document.getElementById("fieldMessage").value;
   const imageUrl = document.getElementById("fieldImageUrl").value.trim();
-  const body = document.getElementById("waPreviewBody");
 
   if (!message.trim() && !imageUrl) {
     body.innerHTML = `<div class="wa-empty" data-i18n="campaigns.previewEmpty">${I18N.t("campaigns.previewEmpty")}</div>`;
@@ -349,15 +427,22 @@ function updatePreview() {
 
 async function submitCampaign() {
   const name = document.getElementById("fieldCampaignName").value.trim();
+  const isTemplate = document.getElementById("msgTypeTemplate").checked;
   const message = document.getElementById("fieldMessage").value.trim();
   const imageUrl = document.getElementById("fieldImageUrl").value.trim();
   const pdfUrl = document.getElementById("fieldPdfUrl").value.trim();
+  const templateName = document.getElementById("fieldTemplateName").value.trim();
+  const templateLang = document.getElementById("fieldTemplateLang").value.trim() || "ar";
   const isCustom = document.getElementById("modeCustom").checked;
   const isLater = document.getElementById("sendLaterRadio").checked;
   const scheduleAt = document.getElementById("fieldScheduleAt").value;
 
   if (!name) { MCApp.toast(I18N.t("campaigns.validationName"), "error"); return; }
-  if (!message) { MCApp.toast(I18N.t("campaigns.validationMessage"), "error"); return; }
+  if (isTemplate) {
+    if (!templateName) { MCApp.toast(I18N.t("campaigns.validationTemplateName"), "error"); return; }
+  } else if (!message) {
+    MCApp.toast(I18N.t("campaigns.validationMessage"), "error"); return;
+  }
   if (isCustom && selectedRecipientIds.size === 0) { MCApp.toast(I18N.t("campaigns.validationRecipients"), "error"); return; }
   if (isLater && (!scheduleAt || new Date(scheduleAt) <= new Date())) { MCApp.toast(I18N.t("campaigns.validationDate"), "error"); return; }
   if (!MCApi.isConfigured()) { MCApp.toast(I18N.t("common.error"), "error"); return; }
@@ -374,9 +459,13 @@ async function submitCampaign() {
   try {
     const campaignPayload = {
       Name: name,
-      Message: message,
-      ImageUrl: imageUrl,
-      PdfUrl: pdfUrl,
+      MessageType: isTemplate ? "template" : "text",
+      Message: isTemplate ? "" : message,
+      ImageUrl: isTemplate ? "" : imageUrl,
+      PdfUrl: isTemplate ? "" : pdfUrl,
+      TemplateName: isTemplate ? templateName : "",
+      TemplateLanguage: isTemplate ? templateLang : "",
+      TemplateParams: isTemplate ? templateParamOrder.join(",") : "",
       RecipientIds: isCustom ? Array.from(selectedRecipientIds).join(",") : "",
       Status: isLater ? "Scheduled" : "Draft",
       ScheduledAt: isLater ? new Date(scheduleAt).toISOString() : "",
@@ -460,6 +549,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   document.getElementById("fieldMessage").addEventListener("input", updatePreview);
   document.getElementById("fieldImageUrl").addEventListener("input", updatePreview);
+  document.getElementById("fieldTemplateName").addEventListener("input", updatePreview);
+  document.querySelectorAll('input[name="messageType"]').forEach((r) => r.addEventListener("change", () => { toggleMessageType(); updatePreview(); }));
   document.querySelectorAll('input[name="recipientMode"]').forEach((r) => r.addEventListener("change", () => { toggleRecipientMode(); updatePreview(); }));
   document.querySelectorAll('input[name="sendMode"]').forEach((r) => r.addEventListener("change", toggleSendMode));
   document.getElementById("recipientSearch").addEventListener("input", renderRecipientList);
@@ -473,7 +564,8 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("uploadRecipientListBtn").addEventListener("click", () => document.getElementById("recipientFileInput").click());
   document.getElementById("recipientFileInput").addEventListener("change", (e) => { handleRecipientListUpload(e.target.files[0]); e.target.value = ""; });
 
-  document.querySelectorAll(".var-btn").forEach((btn) => {
+  // Text-message variable buttons insert into the free-form textarea.
+  document.querySelectorAll(".var-btn[data-var]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const textarea = document.getElementById("fieldMessage");
       const varText = btn.getAttribute("data-var");
@@ -485,6 +577,29 @@ document.addEventListener("DOMContentLoaded", () => {
       updatePreview();
     });
   });
+
+  // Template-mode variable buttons append to the ordered {{1}}, {{2}}... param list instead.
+  document.querySelectorAll(".tpl-var-btn[data-tplvar]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      templateParamOrder.push(btn.getAttribute("data-tplvar"));
+      renderTemplateParamChips();
+      updatePreview();
+    });
+  });
+
+  renderTemplateParamChips();
+
+  // If arriving from the Templates page ("Use in campaign"), open the
+  // builder pre-filled with the chosen message body.
+  const params = new URLSearchParams(window.location.search);
+  const prefill = sessionStorage.getItem("mc_prefill_message");
+  if (params.get("prefill") === "1" && prefill !== null) {
+    showFormView().then(() => {
+      document.getElementById("fieldMessage").value = prefill;
+      updatePreview();
+    });
+    sessionStorage.removeItem("mc_prefill_message");
+  }
 });
 
-I18N.onChange(() => { renderCampaignsList(); updatePreview(); updateRecipientCount(); });
+I18N.onChange(() => { renderCampaignsList(); updatePreview(); updateRecipientCount(); renderTemplateParamChips(); });

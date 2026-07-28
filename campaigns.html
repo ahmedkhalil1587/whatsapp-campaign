@@ -90,7 +90,7 @@
       <a class="nav-link" href="doctors.html" data-page="doctors">
         <i class="bi bi-person-badge-fill"></i> <span data-i18n="nav.doctors">Customers</span>
       </a>
-      <a class="nav-link" href="#" data-page="templates" data-unbuilt="true">
+      <a class="nav-link" href="templates.html" data-page="templates">
         <i class="bi bi-file-earmark-text-fill"></i> <span data-i18n="nav.templates">Templates</span>
       </a>
       <a class="nav-link" href="#" data-page="history" data-unbuilt="true">
@@ -177,41 +177,80 @@
                 <input type="text" class="form-control" id="fieldCampaignName" data-i18n-placeholder="campaigns.campaignNamePlaceholder">
               </div>
 
-              <div class="mb-2">
-                <label class="form-label fw-semibold" data-i18n="campaigns.messageBody">Message</label>
-                <textarea class="form-control" id="fieldMessage" rows="6" data-i18n-placeholder="campaigns.messageBodyPlaceholder"></textarea>
-              </div>
-              <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-                <span class="small text-secondary" data-i18n="campaigns.insertVariable">Insert:</span>
-                <button type="button" class="var-btn" data-var="{{doctor_name}}">{{doctor_name}}</button>
-                <button type="button" class="var-btn" data-var="{{specialty}}">{{specialty}}</button>
-                <button type="button" class="var-btn" data-var="{{hospital}}">{{hospital}}</button>
-                <button type="button" class="var-btn" data-var="{{city}}">{{city}}</button>
+              <div class="mb-3">
+                <label class="form-label fw-semibold" data-i18n="campaigns.messageType">Message type</label>
+                <div class="form-check mb-1">
+                  <input class="form-check-input" type="radio" name="messageType" id="msgTypeText" value="text" checked>
+                  <label class="form-check-label" for="msgTypeText" data-i18n="campaigns.messageTypeText">Free-form message (default)</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" name="messageType" id="msgTypeTemplate" value="template">
+                  <label class="form-check-label" for="msgTypeTemplate" data-i18n="campaigns.messageTypeTemplate">Approved Meta template</label>
+                </div>
+                <div class="small text-secondary mt-1" data-i18n="campaigns.messageTypeHint">Use a template only for customers outside the 24-hour reply window — Meta requires an approved template to reach them.</div>
               </div>
 
-              <div class="mb-3">
-                <label class="form-label fw-semibold" data-i18n="campaigns.imageUrl">Image URL (optional)</label>
-                <div class="input-group">
-                  <input type="url" class="form-control" id="fieldImageUrl" data-i18n-placeholder="campaigns.imageUrlPlaceholder">
-                  <button type="button" class="btn btn-outline-secondary" id="uploadImageBtn">
-                    <i class="bi bi-upload"></i> <span data-i18n="campaigns.uploadBtn">Upload</span>
-                  </button>
+              <div id="textModeBox">
+                <div class="mb-2">
+                  <label class="form-label fw-semibold" data-i18n="campaigns.messageBody">Message</label>
+                  <textarea class="form-control" id="fieldMessage" rows="6" data-i18n-placeholder="campaigns.messageBodyPlaceholder"></textarea>
                 </div>
-                <input type="file" id="imageFileInput" accept="image/*" class="d-none">
-                <div class="small mt-1 d-none" id="imageUploadStatus"></div>
-              </div>
-              <div class="mb-1">
-                <label class="form-label fw-semibold" data-i18n="campaigns.pdfUrl">PDF URL (optional)</label>
-                <div class="input-group">
-                  <input type="url" class="form-control" id="fieldPdfUrl" data-i18n-placeholder="campaigns.pdfUrlPlaceholder">
-                  <button type="button" class="btn btn-outline-secondary" id="uploadPdfBtn">
-                    <i class="bi bi-upload"></i> <span data-i18n="campaigns.uploadBtn">Upload</span>
-                  </button>
+                <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                  <span class="small text-secondary" data-i18n="campaigns.insertVariable">Insert:</span>
+                  <button type="button" class="var-btn" data-var="{{doctor_name}}">{{doctor_name}}</button>
+                  <button type="button" class="var-btn" data-var="{{specialty}}">{{specialty}}</button>
+                  <button type="button" class="var-btn" data-var="{{hospital}}">{{hospital}}</button>
+                  <button type="button" class="var-btn" data-var="{{city}}">{{city}}</button>
                 </div>
-                <input type="file" id="pdfFileInput" accept="application/pdf" class="d-none">
-                <div class="small mt-1 d-none" id="pdfUploadStatus"></div>
+
+                <div class="mb-3">
+                  <label class="form-label fw-semibold" data-i18n="campaigns.imageUrl">Image URL (optional)</label>
+                  <div class="input-group">
+                    <input type="url" class="form-control" id="fieldImageUrl" data-i18n-placeholder="campaigns.imageUrlPlaceholder">
+                    <button type="button" class="btn btn-outline-secondary" id="uploadImageBtn">
+                      <i class="bi bi-upload"></i> <span data-i18n="campaigns.uploadBtn">Upload</span>
+                    </button>
+                  </div>
+                  <input type="file" id="imageFileInput" accept="image/*" class="d-none">
+                  <div class="small mt-1 d-none" id="imageUploadStatus"></div>
+                </div>
+                <div class="mb-1">
+                  <label class="form-label fw-semibold" data-i18n="campaigns.pdfUrl">PDF URL (optional)</label>
+                  <div class="input-group">
+                    <input type="url" class="form-control" id="fieldPdfUrl" data-i18n-placeholder="campaigns.pdfUrlPlaceholder">
+                    <button type="button" class="btn btn-outline-secondary" id="uploadPdfBtn">
+                      <i class="bi bi-upload"></i> <span data-i18n="campaigns.uploadBtn">Upload</span>
+                    </button>
+                  </div>
+                  <input type="file" id="pdfFileInput" accept="application/pdf" class="d-none">
+                  <div class="small mt-1 d-none" id="pdfUploadStatus"></div>
+                </div>
+                <div class="small text-secondary" data-i18n="campaigns.uploadHint">You can also paste a direct link instead of uploading. Uploaded files are saved to your Google Drive.</div>
               </div>
-              <div class="small text-secondary" data-i18n="campaigns.uploadHint">You can also paste a direct link instead of uploading. Uploaded files are saved to your Google Drive.</div>
+
+              <div id="templateModeBox" class="d-none">
+                <div class="mb-3">
+                  <label class="form-label fw-semibold" data-i18n="campaigns.templateName">Approved template name</label>
+                  <input type="text" class="form-control" id="fieldTemplateName" data-i18n-placeholder="campaigns.templateNamePlaceholder">
+                  <div class="small text-secondary mt-1" data-i18n="campaigns.templateNameHint">Must exactly match a template approved in WhatsApp Manager.</div>
+                </div>
+                <div class="mb-3">
+                  <label class="form-label fw-semibold" data-i18n="campaigns.templateLang">Language code</label>
+                  <input type="text" class="form-control" id="fieldTemplateLang" placeholder="ar / en_US" value="ar" style="max-width:160px;">
+                </div>
+                <div class="mb-1">
+                  <label class="form-label fw-semibold" data-i18n="campaigns.templateParams">Variables in order</label>
+                  <div class="small text-secondary mb-2" data-i18n="campaigns.templateParamsHint">Must match {{1}}, {{2}}... in your approved template body, in the same order.</div>
+                  <div class="d-flex flex-wrap gap-2 mb-2" id="templateParamChips"></div>
+                  <div class="d-flex flex-wrap align-items-center gap-2">
+                    <span class="small text-secondary" data-i18n="campaigns.insertVariable">Insert:</span>
+                    <button type="button" class="var-btn tpl-var-btn" data-tplvar="doctor_name">{{doctor_name}}</button>
+                    <button type="button" class="var-btn tpl-var-btn" data-tplvar="specialty">{{specialty}}</button>
+                    <button type="button" class="var-btn tpl-var-btn" data-tplvar="hospital">{{hospital}}</button>
+                    <button type="button" class="var-btn tpl-var-btn" data-tplvar="city">{{city}}</button>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <!-- Recipients -->
