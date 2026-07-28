@@ -285,5 +285,21 @@
       "thankYouName": "شكرًا",
       "thankYouBody": "عزيزي {{doctor_name}}، شكرًا لحضورك مؤتمرنا في {{city}}. نتمنى إنه كان مفيد ليك."
     }
+  },
+  "history": {
+    "title": "السجل",
+    "subtitle": "كل رسالة اتبعتت على الإطلاق، من كل الحملات.",
+    "notConnected": "اربط الباك إند من الإعدادات الأول عشان تدير بيانات حقيقية.",
+    "searchPlaceholder": "ابحث بالعميل أو الموبايل أو اسم الحملة...",
+    "filterAll": "كل الحالات",
+    "filterSent": "تم الإرسال",
+    "filterFailed": "فشلت",
+    "col": { "time": "الوقت", "campaign": "الحملة", "customer": "العميل", "mobile": "الموبايل", "status": "الحالة" },
+    "empty": "لا توجد رسائل مرسلة بعد.",
+    "prev": "السابق",
+    "next": "التالي",
+    "pageOf": "صفحة {current} من {total}",
+    "exportExcel": "تصدير Excel",
+    "exportFileName": "سجل-الرسائل"
   }
 }

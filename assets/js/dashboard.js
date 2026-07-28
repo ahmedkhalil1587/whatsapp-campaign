@@ -128,7 +128,8 @@ async function loadDashboard() {
   let stats = DEMO_STATS;
   if (typeof MCApi !== "undefined" && MCApi.isConfigured()) {
     try {
-      stats = await MCApi.Dashboard.stats();
+      const res = await MCApi.Dashboard.stats();
+      stats = res.stats;
     } catch (err) {
       MCApp.toast(I18N.t("common.error"), "error");
     }

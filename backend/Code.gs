@@ -95,6 +95,8 @@ function routeAction_(action, body) {
 
     case "dashboard.stats":   return { ok: true, stats: buildDashboardStats_() };
 
+    case "history.list":      return { ok: true, rows: buildHistoryRows_() };
+
     case "settings.get":      return { ok: true, settings: getPublicSettings_() };
     case "settings.save":     return { ok: true, settings: saveSettings_(body.settings) };
 
@@ -199,6 +201,31 @@ function authLogin_(username, password) {
 // ---------------------------------------------------------------
 // Dashboard stats
 // ---------------------------------------------------------------
+
+/** Joins Logs with Campaigns and Doctors so the History page can show readable names instead of raw IDs. */
+function buildHistoryRows_() {
+  var logs = sheetToObjects_("Logs");
+  var campaigns = sheetToObjects_("Campaigns");
+  var doctors = sheetToObjects_("Doctors");
+  var campaignById = {};
+  campaigns.forEach(function (c) { campaignById[c.ID] = c; });
+  var doctorById = {};
+  doctors.forEach(function (d) { doctorById[d.ID] = d; });
+
+  return logs.map(function (l) {
+    var campaign = campaignById[l.CampaignID];
+    var doctor = doctorById[l.DoctorID];
+    return {
+      Timestamp: l.Timestamp,
+      CampaignID: l.CampaignID,
+      CampaignName: campaign ? campaign.Name : "",
+      DoctorID: l.DoctorID,
+      CustomerName: doctor ? doctor.Name : "",
+      MobileNumber: l.MobileNumber,
+      Status: l.Status,
+    };
+  }).reverse();
+}
 
 function buildDashboardStats_() {
   var doctors = sheetToObjects_("Doctors");

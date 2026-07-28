@@ -285,5 +285,21 @@
       "thankYouName": "Thank You",
       "thankYouBody": "Dear {{doctor_name}}, thank you for attending our conference in {{city}}. We hope it was valuable for you."
     }
+  },
+  "history": {
+    "title": "History",
+    "subtitle": "Every message ever sent, across all campaigns.",
+    "notConnected": "Connect your backend in Settings first to manage real data.",
+    "searchPlaceholder": "Search by customer, mobile, or campaign...",
+    "filterAll": "All statuses",
+    "filterSent": "Sent",
+    "filterFailed": "Failed",
+    "col": { "time": "Time", "campaign": "Campaign", "customer": "Customer", "mobile": "Mobile", "status": "Status" },
+    "empty": "No messages sent yet.",
+    "prev": "Previous",
+    "next": "Next",
+    "pageOf": "Page {current} of {total}",
+    "exportExcel": "Export Excel",
+    "exportFileName": "message-history"
   }
 }

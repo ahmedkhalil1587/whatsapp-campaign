@@ -69,6 +69,10 @@ const MCApi = (() => {
     stats: () => call("dashboard.stats"),
   };
 
+  const History = {
+    list: () => call("history.list"),
+  };
+
   const Settings = {
     get: () => call("settings.get"),
     save: (settings) => call("settings.save", { settings }),
@@ -78,5 +82,5 @@ const MCApi = (() => {
     upload: (filename, mimeType, base64) => call("media.upload", { filename, mimeType, base64 }),
   };
 
-  return { call, getBaseUrl, setBaseUrl, isConfigured, Doctors, Campaigns, Templates, Dashboard, Settings, Media };
+  return { call, getBaseUrl, setBaseUrl, isConfigured, Doctors, Campaigns, Templates, Dashboard, History, Settings, Media };
 })();
