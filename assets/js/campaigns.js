@@ -187,9 +187,72 @@ function updateRecipientCount() {
 }
 
 function toggleRecipientMode() {
-  const isCustom = document.getElementById("modeCustom").checked;
-  document.getElementById("customModeBox").classList.toggle("d-none", !isCustom);
-  document.getElementById("allModeHint").classList.toggle("d-none", isCustom);
+  const mode = document.querySelector('input[name="recipientMode"]:checked').value;
+  document.getElementById("customModeBox").classList.toggle("d-none", mode !== "custom");
+  document.getElementById("uploadModeBox").classList.toggle("d-none", mode !== "upload");
+  document.getElementById("allModeHint").classList.toggle("d-none", mode !== "all");
+}
+
+async function handleRecipientListUpload(file) {
+  const statusEl = document.getElementById("recipientUploadStatus");
+  const btn = document.getElementById("uploadRecipientListBtn");
+  if (!file) return;
+  if (!MCApi.isConfigured()) { MCApp.toast(I18N.t("common.error"), "error"); return; }
+
+  btn.disabled = true;
+  statusEl.classList.remove("d-none", "text-danger", "text-success");
+  statusEl.textContent = I18N.t("campaigns.uploading");
+
+  try {
+    const buffer = await file.arrayBuffer();
+    const wb = XLSX.read(buffer, { type: "array" });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+    const mapped = rows.map((r) => ({
+      Name: r.Name || r.name || "",
+      Mobile: String(r.Mobile || r.mobile || "").trim(),
+      Specialty: r.Specialty || r.specialty || "",
+      Hospital: r.Hospital || r.hospital || "",
+      City: r.City || r.city || "",
+      Country: r.Country || r.country || "",
+      Status: r.Status || r.status || "Active",
+      Notes: r.Notes || r.notes || "",
+    })).filter((r) => r.Name && r.Mobile);
+
+    if (mapped.length === 0) throw new Error("empty");
+
+    // Match against the customers we already have (by mobile number).
+    const existingByMobile = new Map(allCustomers.map((d) => [String(d.Mobile).trim(), d]));
+    const toCreate = mapped.filter((r) => !existingByMobile.has(r.Mobile));
+    const matchedIds = mapped.filter((r) => existingByMobile.has(r.Mobile)).map((r) => String(existingByMobile.get(r.Mobile).ID));
+
+    if (toCreate.length > 0) {
+      await MCApi.Doctors.bulkImport(toCreate);
+    }
+
+    // Reload the customer list so newly-created rows get real IDs, then match again.
+    const res = await MCApi.Doctors.list();
+    allCustomers = res.rows || [];
+    const refreshedByMobile = new Map(allCustomers.map((d) => [String(d.Mobile).trim(), d]));
+    const allIds = mapped
+      .map((r) => refreshedByMobile.get(r.Mobile))
+      .filter(Boolean)
+      .map((d) => String(d.ID));
+
+    selectedRecipientIds = new Set(allIds);
+    document.getElementById("modeCustom").checked = true;
+    toggleRecipientMode();
+    renderRecipientList();
+    updatePreview();
+
+    statusEl.classList.add("text-success");
+    statusEl.textContent = t("campaigns.recipientsUploadDone", { matched: matchedIds.length, added: toCreate.length });
+  } catch (err) {
+    statusEl.classList.add("text-danger");
+    statusEl.textContent = I18N.t("campaigns.recipientsUploadError");
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // ---------------------------------------------------------------
@@ -370,6 +433,9 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("imageFileInput").addEventListener("change", (e) => handleMediaUpload(e.target.files[0], "fieldImageUrl", "imageUploadStatus", "uploadImageBtn"));
   document.getElementById("uploadPdfBtn").addEventListener("click", () => document.getElementById("pdfFileInput").click());
   document.getElementById("pdfFileInput").addEventListener("change", (e) => handleMediaUpload(e.target.files[0], "fieldPdfUrl", "pdfUploadStatus", "uploadPdfBtn"));
+
+  document.getElementById("uploadRecipientListBtn").addEventListener("click", () => document.getElementById("recipientFileInput").click());
+  document.getElementById("recipientFileInput").addEventListener("change", (e) => { handleRecipientListUpload(e.target.files[0]); e.target.value = ""; });
 
   document.querySelectorAll(".var-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
