@@ -190,6 +190,19 @@
                 <div class="small text-secondary mt-1" data-i18n="campaigns.messageTypeHint">Use a template only for customers outside the 24-hour reply window — Meta requires an approved template to reach them.</div>
               </div>
 
+              <div class="mb-3">
+                <label class="form-label fw-semibold" data-i18n="campaigns.imageUrl">Image URL (optional)</label>
+                <div class="input-group">
+                  <input type="url" class="form-control" id="fieldImageUrl" data-i18n-placeholder="campaigns.imageUrlPlaceholder">
+                  <button type="button" class="btn btn-outline-secondary" id="uploadImageBtn">
+                    <i class="bi bi-upload"></i> <span data-i18n="campaigns.uploadBtn">Upload</span>
+                  </button>
+                </div>
+                <input type="file" id="imageFileInput" accept="image/*" class="d-none">
+                <div class="small mt-1 d-none" id="imageUploadStatus"></div>
+                <div class="small text-secondary mt-1" id="imageFieldHint" data-i18n="campaigns.uploadHint">You can also paste a direct link instead of uploading. Uploaded files are saved to your Google Drive.</div>
+              </div>
+
               <div id="textModeBox">
                 <div class="mb-2">
                   <label class="form-label fw-semibold" data-i18n="campaigns.messageBody">Message</label>
@@ -203,17 +216,6 @@
                   <button type="button" class="var-btn" data-var="{{city}}">{{city}}</button>
                 </div>
 
-                <div class="mb-3">
-                  <label class="form-label fw-semibold" data-i18n="campaigns.imageUrl">Image URL (optional)</label>
-                  <div class="input-group">
-                    <input type="url" class="form-control" id="fieldImageUrl" data-i18n-placeholder="campaigns.imageUrlPlaceholder">
-                    <button type="button" class="btn btn-outline-secondary" id="uploadImageBtn">
-                      <i class="bi bi-upload"></i> <span data-i18n="campaigns.uploadBtn">Upload</span>
-                    </button>
-                  </div>
-                  <input type="file" id="imageFileInput" accept="image/*" class="d-none">
-                  <div class="small mt-1 d-none" id="imageUploadStatus"></div>
-                </div>
                 <div class="mb-1">
                   <label class="form-label fw-semibold" data-i18n="campaigns.pdfUrl">PDF URL (optional)</label>
                   <div class="input-group">
@@ -225,7 +227,6 @@
                   <input type="file" id="pdfFileInput" accept="application/pdf" class="d-none">
                   <div class="small mt-1 d-none" id="pdfUploadStatus"></div>
                 </div>
-                <div class="small text-secondary" data-i18n="campaigns.uploadHint">You can also paste a direct link instead of uploading. Uploaded files are saved to your Google Drive.</div>
               </div>
 
               <div id="templateModeBox" class="d-none">

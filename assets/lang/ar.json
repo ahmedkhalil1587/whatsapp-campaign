@@ -198,6 +198,7 @@
     "validationTemplateName": "من فضلك اكتب اسم القالب المعتمد.",
     "uploadBtn": "رفع",
     "uploadHint": "تقدر كمان تلصق رابط مباشر بدل الرفع. الملفات المرفوعة بتتحفظ في Google Drive بتاعك.",
+    "imageFieldHintTemplate": "الصورة دي بتتبعت كصورة الهيدر بتاعة القالب — لازم تكون معتمدة كـ Image Header في WhatsApp Manager.",
     "uploading": "جارٍ الرفع...",
     "uploadDone": "تم الرفع: {name}",
     "uploadFailed": "فشل الرفع. حاول تاني.",

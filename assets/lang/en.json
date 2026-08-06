@@ -198,6 +198,7 @@
     "validationTemplateName": "Please enter the approved template name.",
     "uploadBtn": "Upload",
     "uploadHint": "You can also paste a direct link instead of uploading. Uploaded files are saved to your Google Drive.",
+    "imageFieldHintTemplate": "This image is sent as the template's header image — it must be approved as an Image header in WhatsApp Manager.",
     "uploading": "Uploading...",
     "uploadDone": "Uploaded: {name}",
     "uploadFailed": "Upload failed. Please try again.",

@@ -362,8 +362,10 @@ function sendWhatsAppMessage_(toNumber, bodyText, mediaUrl) {
  * instead of {{1}}), each parameter is tagged with parameter_name so Meta
  * can match it correctly — this is required for templates built with named
  * variables, and must match the exact name registered in WhatsApp Manager.
+ * headerImageUrl is only needed if the approved template has an Image
+ * header component.
  */
-function sendWhatsAppTemplateMessage_(toNumber, templateName, languageCode, paramValues, paramNames) {
+function sendWhatsAppTemplateMessage_(toNumber, templateName, languageCode, paramValues, paramNames, headerImageUrl) {
   var payload = {
     messaging_product: "whatsapp",
     to: toNumber,
@@ -371,18 +373,26 @@ function sendWhatsAppTemplateMessage_(toNumber, templateName, languageCode, para
     template: {
       name: templateName,
       language: { code: languageCode || "ar" },
+      components: [],
     },
   };
+  if (headerImageUrl) {
+    payload.template.components.push({
+      type: "header",
+      parameters: [{ type: "image", image: { link: headerImageUrl } }],
+    });
+  }
   if (paramValues && paramValues.length) {
-    payload.template.components = [{
+    payload.template.components.push({
       type: "body",
       parameters: paramValues.map(function (v, i) {
         var param = { type: "text", text: v || "" };
         if (paramNames && paramNames[i]) param.parameter_name = paramNames[i];
         return param;
       }),
-    }];
+    });
   }
+  if (payload.template.components.length === 0) delete payload.template.components;
   return callWhatsAppApi_(payload);
 }
 
@@ -411,7 +421,7 @@ function sendOneCampaignMessage_(campaign, doctor) {
     var paramNames = campaign.TemplateParamNames
       ? String(campaign.TemplateParamNames).split(",").map(function (s) { return s.trim(); }).filter(Boolean)
       : null;
-    return sendWhatsAppTemplateMessage_(doctor.Mobile, campaign.TemplateName, campaign.TemplateLanguage, paramValues, paramNames);
+    return sendWhatsAppTemplateMessage_(doctor.Mobile, campaign.TemplateName, campaign.TemplateLanguage, paramValues, paramNames, campaign.ImageUrl);
   }
   var text = renderTemplate_(campaign.Message, doctor);
   return sendWhatsAppMessage_(doctor.Mobile, text, campaign.ImageUrl);

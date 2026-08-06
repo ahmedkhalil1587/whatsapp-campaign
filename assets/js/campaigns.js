@@ -201,6 +201,9 @@ function toggleMessageType() {
   const isTemplate = document.getElementById("msgTypeTemplate").checked;
   document.getElementById("textModeBox").classList.toggle("d-none", isTemplate);
   document.getElementById("templateModeBox").classList.toggle("d-none", !isTemplate);
+  document.getElementById("imageFieldHint").textContent = isTemplate
+    ? I18N.t("campaigns.imageFieldHintTemplate")
+    : I18N.t("campaigns.uploadHint");
 }
 
 function renderTemplateParamChips() {
@@ -376,7 +379,8 @@ function updatePreview() {
 
   if (isTemplate) {
     const templateName = document.getElementById("fieldTemplateName").value.trim();
-    if (!templateName && templateParamOrder.length === 0) {
+    const headerImageUrl = document.getElementById("fieldImageUrl").value.trim();
+    if (!templateName && templateParamOrder.length === 0 && !headerImageUrl) {
       body.innerHTML = `<div class="wa-empty">${I18N.t("campaigns.templatePreviewEmpty")}</div>`;
       return;
     }
@@ -392,6 +396,7 @@ function updatePreview() {
       : `<div class="text-secondary">${I18N.t("campaigns.templateParamsEmpty")}</div>`;
     body.innerHTML = `
       <div class="wa-bubble" style="max-width:96%;">
+        ${headerImageUrl ? `<img src="${escapeHtml(headerImageUrl)}" onerror="this.style.display='none'">` : ""}
         <div class="fw-semibold mb-1"><i class="bi bi-file-earmark-text-fill"></i> ${escapeHtml(templateName) || "—"}</div>
         <div class="small">${paramsHtml}</div>
         <div class="small text-secondary mt-2">${I18N.t("campaigns.templatePreviewNote")}</div>
@@ -464,7 +469,7 @@ async function submitCampaign() {
       Name: name,
       MessageType: isTemplate ? "template" : "text",
       Message: isTemplate ? "" : message,
-      ImageUrl: isTemplate ? "" : imageUrl,
+      ImageUrl: imageUrl,
       PdfUrl: isTemplate ? "" : pdfUrl,
       TemplateName: isTemplate ? templateName : "",
       TemplateLanguage: isTemplate ? templateLang : "",
