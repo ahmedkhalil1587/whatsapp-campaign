@@ -326,7 +326,11 @@ function callWhatsAppApi_(payload) {
 
   var data = JSON.parse(response.getContentText());
   if (response.getResponseCode() >= 300) {
-    throw new Error((data.error && data.error.message) || "WhatsApp API error");
+    var errObj = data.error || {};
+    var msg = errObj.message || "WhatsApp API error";
+    if (errObj.error_data && errObj.error_data.details) msg += " — " + errObj.error_data.details;
+    if (errObj.error_subcode) msg += " (subcode " + errObj.error_subcode + ")";
+    throw new Error(msg);
   }
   return data.messages && data.messages[0] && data.messages[0].id;
 }
