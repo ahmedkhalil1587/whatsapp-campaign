@@ -250,6 +250,11 @@
                     <button type="button" class="var-btn tpl-var-btn" data-tplvar="city">{{city}}</button>
                   </div>
                 </div>
+                <div class="mb-1 mt-3">
+                  <label class="form-label fw-semibold" data-i18n="campaigns.templateParamNames">Meta parameter name(s)</label>
+                  <input type="text" class="form-control" id="fieldTemplateParamNames" data-i18n-placeholder="campaigns.templateParamNamesPlaceholder">
+                  <div class="small text-secondary mt-1" data-i18n="campaigns.templateParamNamesHint">Only needed for newer named-variable templates (e.g. {{customer_name}}). Comma-separated, matching the exact names in WhatsApp Manager, same order as above. Leave blank for older numbered templates ({{1}}, {{2}}...).</div>
+                </div>
               </div>
             </div>
 

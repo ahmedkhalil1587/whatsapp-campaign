@@ -6,7 +6,7 @@
  *
  * Sheet tabs expected (create with these exact names/headers):
  *   Doctors    : ID | Name | Mobile | Specialty | Hospital | City | Country | Status | Notes
- *   Campaigns  : ID | Name | Message | ImageUrl | PdfUrl | Status | ScheduledAt | CreatedAt | Sent | Delivered | Read | Failed | RecipientIds | MessageType | TemplateName | TemplateLanguage | TemplateParams
+ *   Campaigns  : ID | Name | Message | ImageUrl | PdfUrl | Status | ScheduledAt | CreatedAt | Sent | Delivered | Read | Failed | RecipientIds | MessageType | TemplateName | TemplateLanguage | TemplateParams | TemplateParamNames
  *   Templates  : ID | Name | Body
  *   Logs       : Timestamp | CampaignID | DoctorID | MobileNumber | WaMessageId | Status
  *   Users      : Username | Password | Name | Role
@@ -352,7 +352,18 @@ function sendWhatsAppMessage_(toNumber, bodyText, mediaUrl) {
  * an approved template in WhatsApp Manager. paramValues fill {{1}}, {{2}}...
  * in the template body, in order.
  */
-function sendWhatsAppTemplateMessage_(toNumber, templateName, languageCode, paramValues) {
+/**
+ * Approved Meta message template — works outside the 24h window (first
+ * contact, re-engagement). templateName/languageCode must exactly match
+ * an approved template in WhatsApp Manager.
+ *
+ * paramValues fills the template body variables in order. If paramNames
+ * is provided (Meta's newer named-parameter templates, e.g. {{customer_name}}
+ * instead of {{1}}), each parameter is tagged with parameter_name so Meta
+ * can match it correctly — this is required for templates built with named
+ * variables, and must match the exact name registered in WhatsApp Manager.
+ */
+function sendWhatsAppTemplateMessage_(toNumber, templateName, languageCode, paramValues, paramNames) {
   var payload = {
     messaging_product: "whatsapp",
     to: toNumber,
@@ -365,7 +376,11 @@ function sendWhatsAppTemplateMessage_(toNumber, templateName, languageCode, para
   if (paramValues && paramValues.length) {
     payload.template.components = [{
       type: "body",
-      parameters: paramValues.map(function (v) { return { type: "text", text: v || "" }; }),
+      parameters: paramValues.map(function (v, i) {
+        var param = { type: "text", text: v || "" };
+        if (paramNames && paramNames[i]) param.parameter_name = paramNames[i];
+        return param;
+      }),
     }];
   }
   return callWhatsAppApi_(payload);
@@ -393,7 +408,10 @@ function sendOneCampaignMessage_(campaign, doctor) {
       ? String(campaign.TemplateParams).split(",").map(function (s) { return s.trim(); }).filter(Boolean)
       : [];
     var paramValues = paramFields.map(function (f) { return fieldValueForDoctor_(f, doctor); });
-    return sendWhatsAppTemplateMessage_(doctor.Mobile, campaign.TemplateName, campaign.TemplateLanguage, paramValues);
+    var paramNames = campaign.TemplateParamNames
+      ? String(campaign.TemplateParamNames).split(",").map(function (s) { return s.trim(); }).filter(Boolean)
+      : null;
+    return sendWhatsAppTemplateMessage_(doctor.Mobile, campaign.TemplateName, campaign.TemplateLanguage, paramValues, paramNames);
   }
   var text = renderTemplate_(campaign.Message, doctor);
   return sendWhatsAppMessage_(doctor.Mobile, text, campaign.ImageUrl);

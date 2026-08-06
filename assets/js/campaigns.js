@@ -132,6 +132,7 @@ function duplicateCampaign(id) {
     document.getElementById("msgTypeTemplate").checked = true;
     document.getElementById("fieldTemplateName").value = c.TemplateName || "";
     document.getElementById("fieldTemplateLang").value = c.TemplateLanguage || "ar";
+    document.getElementById("fieldTemplateParamNames").value = c.TemplateParamNames || "";
     templateParamOrder = c.TemplateParams ? String(c.TemplateParams).split(",").map((s) => s.trim()).filter(Boolean) : [];
     renderTemplateParamChips();
   } else {
@@ -176,6 +177,7 @@ function resetForm() {
   document.getElementById("msgTypeText").checked = true;
   document.getElementById("fieldTemplateName").value = "";
   document.getElementById("fieldTemplateLang").value = "ar";
+  document.getElementById("fieldTemplateParamNames").value = "";
   templateParamOrder = [];
   renderTemplateParamChips();
   document.getElementById("modeAll").checked = true;
@@ -467,6 +469,7 @@ async function submitCampaign() {
       TemplateName: isTemplate ? templateName : "",
       TemplateLanguage: isTemplate ? templateLang : "",
       TemplateParams: isTemplate ? templateParamOrder.join(",") : "",
+      TemplateParamNames: isTemplate ? document.getElementById("fieldTemplateParamNames").value.trim() : "",
       RecipientIds: isCustom ? Array.from(selectedRecipientIds).join(",") : "",
       Status: isLater ? "Scheduled" : "Draft",
       ScheduledAt: isLater ? new Date(scheduleAt).toISOString() : "",
