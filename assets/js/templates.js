@@ -29,6 +29,7 @@ async function loadTemplates() {
     renderTemplates();
   } catch (err) {
     MCApp.toast(I18N.t("common.error"), "error");
+    renderTemplates();
   }
 }
 

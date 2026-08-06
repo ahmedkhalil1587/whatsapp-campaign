@@ -532,9 +532,20 @@ function handleWebhookStatus_(payload) {
       var headers = values[0];
       var waCol = headers.indexOf("WaMessageId");
       var statusCol = headers.indexOf("Status");
+
+      // Build a detailed status string when Meta includes an error reason
+      // (e.g. delivery failures), instead of just the bare word "failed".
+      var statusText = s.status;
+      if (s.errors && s.errors.length) {
+        var e = s.errors[0];
+        var detail = (e.title || e.message || "Delivery failed");
+        if (e.error_data && e.error_data.details) detail += " — " + e.error_data.details;
+        statusText = s.status + ": (#" + e.code + ") " + detail;
+      }
+
       for (var i = 1; i < values.length; i++) {
         if (values[i][waCol] === s.id) {
-          sheet.getRange(i + 1, statusCol + 1).setValue(s.status);
+          sheet.getRange(i + 1, statusCol + 1).setValue(statusText);
           break;
         }
       }
