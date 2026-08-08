@@ -227,6 +227,8 @@
     "submitSending": "Sending...",
     "confirmSendNow": "Send this campaign right now to {n} customers? This cannot be undone.",
     "sentSuccess": "Campaign sent — {sent} delivered, {failed} failed.",
+    "sendingInProgress": "Sending large campaign — {sent} sent so far, {remaining} left. It will continue automatically every ~10 minutes, or press \"Continue sending\" to speed it up.",
+    "continueSending": "Continue sending",
     "scheduledSuccess": "Campaign scheduled successfully.",
     "schedulerNote": "Scheduled sends require a one-time setup in Apps Script — see the README.",
     "validationName": "Please enter a campaign name.",

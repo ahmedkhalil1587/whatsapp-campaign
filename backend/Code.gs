@@ -437,6 +437,18 @@ function sendOneCampaignMessage_(campaign, doctor) {
  * switch this to a time-driven trigger that processes a batch per run
  * so you stay under WhatsApp's rate limits and Apps Script's 6-min cap.
  */
+/**
+ * Google Apps Script kills any single execution after 6 minutes, so a
+ * campaign to thousands of recipients can never finish in one call.
+ * This sends one batch per call (fast enough to stay well under that
+ * limit) and leaves the campaign in "Sending" status if recipients
+ * remain. processScheduledCampaigns_ (the same 10-minute trigger used
+ * for scheduled sends) automatically calls this again for any campaign
+ * still "Sending" until every recipient has been processed — no manual
+ * splitting or resending required.
+ */
+var CAMPAIGN_BATCH_SIZE_ = 150;
+
 function sendCampaign_(campaignId) {
   var campaigns = sheetToObjects_("Campaigns");
   var campaign = campaigns.find(function (c) { return String(c.ID) === String(campaignId); });
@@ -449,21 +461,35 @@ function sendCampaign_(campaignId) {
     if (recipientIds && recipientIds.length) return recipientIds.indexOf(String(d.ID)) !== -1;
     return d.Status === "Active";
   });
-  var sent = 0, failed = 0;
 
-  doctors.forEach(function (doctor) {
+  // Skip anyone already logged for this campaign (from a previous batch),
+  // so resuming never double-sends.
+  var alreadyProcessed = {};
+  sheetToObjects_("Logs").forEach(function (l) {
+    if (String(l.CampaignID) === String(campaignId)) alreadyProcessed[String(l.DoctorID)] = true;
+  });
+  var remaining = doctors.filter(function (d) { return !alreadyProcessed[String(d.ID)]; });
+  var batch = remaining.slice(0, CAMPAIGN_BATCH_SIZE_);
+
+  var sentNow = 0, failedNow = 0;
+  batch.forEach(function (doctor) {
     try {
       var waMessageId = sendOneCampaignMessage_(campaign, doctor);
       logMessage_(campaignId, doctor.ID, doctor.Mobile, waMessageId, "sent");
-      sent++;
+      sentNow++;
     } catch (err) {
       logMessage_(campaignId, doctor.ID, doctor.Mobile, "", "failed: " + err.message);
-      failed++;
+      failedNow++;
     }
   });
 
-  updateRow_("Campaigns", campaignId, { Status: "Completed", Sent: sent, Failed: failed });
-  return { ok: true, sent: sent, failed: failed };
+  var totalSent = Number(campaign.Sent || 0) + sentNow;
+  var totalFailed = Number(campaign.Failed || 0) + failedNow;
+  var stillRemaining = remaining.length - batch.length;
+  var newStatus = stillRemaining > 0 ? "Sending" : "Completed";
+
+  updateRow_("Campaigns", campaignId, { Status: newStatus, Sent: totalSent, Failed: totalFailed });
+  return { ok: true, sent: totalSent, failed: totalFailed, remaining: stillRemaining, status: newStatus };
 }
 
 function retryFailedMessages_(campaignId) {
@@ -511,6 +537,12 @@ function processScheduledCampaigns_() {
   var campaigns = sheetToObjects_("Campaigns");
   var now = new Date();
   campaigns.forEach(function (c) {
+    // Large campaigns that couldn't finish in one 6-minute run: send the next batch.
+    if (c.Status === "Sending") {
+      try { sendCampaign_(c.ID); } catch (err) { /* leave as "Sending" — retried again next run */ }
+      return;
+    }
+    // Scheduled campaigns whose time has arrived.
     if (c.Status !== "Scheduled" || !c.ScheduledAt) return;
     var when = new Date(c.ScheduledAt);
     if (when <= now) {

@@ -67,15 +67,31 @@ function renderCampaignsList() {
       <td>${Number(c.Delivered || 0)}</td>
       <td>${Number(c.Failed || 0)}</td>
       <td>
+        ${(c.Status === "Sending" || c.Status === "Draft") ? `<button class="btn btn-sm btn-mc-primary continue-btn" data-id="${c.ID}">${I18N.t("campaigns.continueSending")}</button>` : ""}
         <button class="btn btn-sm btn-outline-secondary details-btn" data-id="${c.ID}">${I18N.t("campaigns.viewDetails")}</button>
         ${Number(c.Failed || 0) > 0 ? `<button class="btn btn-sm btn-outline-secondary retry-btn" data-id="${c.ID}">${I18N.t("campaigns.retryFailed")}</button>` : ""}
         <button class="btn btn-sm btn-outline-secondary duplicate-btn" data-id="${c.ID}">${I18N.t("campaigns.duplicate")}</button>
       </td>
     </tr>`).join("");
 
+  document.querySelectorAll(".continue-btn").forEach((btn) => btn.addEventListener("click", () => continueSending(btn.getAttribute("data-id"))));
   document.querySelectorAll(".details-btn").forEach((btn) => btn.addEventListener("click", () => openLogsModal(btn.getAttribute("data-id"))));
   document.querySelectorAll(".retry-btn").forEach((btn) => btn.addEventListener("click", () => retryFailed(btn.getAttribute("data-id"))));
   document.querySelectorAll(".duplicate-btn").forEach((btn) => btn.addEventListener("click", () => duplicateCampaign(btn.getAttribute("data-id"))));
+}
+
+async function continueSending(id) {
+  try {
+    const res = await MCApi.Campaigns.send(id);
+    if (res.status === "Sending") {
+      MCApp.toast(t("campaigns.sendingInProgress", { sent: res.sent ?? 0, remaining: res.remaining ?? 0 }));
+    } else {
+      MCApp.toast(t("campaigns.sentSuccess", { sent: res.sent ?? 0, failed: res.failed ?? 0 }));
+    }
+    await loadCampaigns();
+  } catch (err) {
+    MCApp.toast(I18N.t("common.error"), "error");
+  }
 }
 
 let logsModal;
@@ -486,7 +502,11 @@ async function submitCampaign() {
       MCApp.toast(I18N.t("campaigns.scheduledSuccess"));
     } else {
       const sendRes = await MCApi.Campaigns.send(campaignId);
-      MCApp.toast(t("campaigns.sentSuccess", { sent: sendRes.sent ?? 0, failed: sendRes.failed ?? 0 }));
+      if (sendRes.status === "Sending") {
+        MCApp.toast(t("campaigns.sendingInProgress", { sent: sendRes.sent ?? 0, remaining: sendRes.remaining ?? 0 }));
+      } else {
+        MCApp.toast(t("campaigns.sentSuccess", { sent: sendRes.sent ?? 0, failed: sendRes.failed ?? 0 }));
+      }
     }
     showListView();
   } catch (err) {
