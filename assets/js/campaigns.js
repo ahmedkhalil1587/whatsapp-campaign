@@ -48,6 +48,7 @@ function statusBadgeClass(status) {
   if (status === "Completed") return "completed";
   if (status === "Scheduled") return "scheduled";
   if (status === "Sending" || status === "In progress") return "inProgress";
+  if (status === "Paused") return "draft";
   return "draft";
 }
 
@@ -67,7 +68,9 @@ function renderCampaignsList() {
       <td>${Number(c.Delivered || 0)}</td>
       <td>${Number(c.Failed || 0)}</td>
       <td>
-        ${(c.Status === "Sending" || c.Status === "Draft") ? `<button class="btn btn-sm btn-mc-primary continue-btn" data-id="${c.ID}">${I18N.t("campaigns.continueSending")}</button>` : ""}
+        ${c.Status === "Draft" ? `<button class="btn btn-sm btn-mc-primary continue-btn" data-id="${c.ID}">${I18N.t("campaigns.continueSending")}</button>` : ""}
+        ${c.Status === "Sending" ? `<button class="btn btn-sm btn-mc-primary continue-btn" data-id="${c.ID}">${I18N.t("campaigns.continueSending")}</button><button class="btn btn-sm btn-outline-danger pause-btn" data-id="${c.ID}">${I18N.t("campaigns.pauseSending")}</button>` : ""}
+        ${c.Status === "Paused" ? `<button class="btn btn-sm btn-mc-primary resume-btn" data-id="${c.ID}">${I18N.t("campaigns.resumeSending")}</button>` : ""}
         <button class="btn btn-sm btn-outline-secondary details-btn" data-id="${c.ID}">${I18N.t("campaigns.viewDetails")}</button>
         ${Number(c.Failed || 0) > 0 ? `<button class="btn btn-sm btn-outline-secondary retry-btn" data-id="${c.ID}">${I18N.t("campaigns.retryFailed")}</button>` : ""}
         <button class="btn btn-sm btn-outline-secondary duplicate-btn" data-id="${c.ID}">${I18N.t("campaigns.duplicate")}</button>
@@ -75,6 +78,8 @@ function renderCampaignsList() {
     </tr>`).join("");
 
   document.querySelectorAll(".continue-btn").forEach((btn) => btn.addEventListener("click", () => continueSending(btn.getAttribute("data-id"))));
+  document.querySelectorAll(".pause-btn").forEach((btn) => btn.addEventListener("click", () => pauseSending(btn.getAttribute("data-id"))));
+  document.querySelectorAll(".resume-btn").forEach((btn) => btn.addEventListener("click", () => resumeSending(btn.getAttribute("data-id"))));
   document.querySelectorAll(".details-btn").forEach((btn) => btn.addEventListener("click", () => openLogsModal(btn.getAttribute("data-id"))));
   document.querySelectorAll(".retry-btn").forEach((btn) => btn.addEventListener("click", () => retryFailed(btn.getAttribute("data-id"))));
   document.querySelectorAll(".duplicate-btn").forEach((btn) => btn.addEventListener("click", () => duplicateCampaign(btn.getAttribute("data-id"))));
@@ -83,6 +88,31 @@ function renderCampaignsList() {
 async function continueSending(id) {
   try {
     const res = await MCApi.Campaigns.send(id);
+    if (res.status === "Sending") {
+      MCApp.toast(t("campaigns.sendingInProgress", { sent: res.sent ?? 0, remaining: res.remaining ?? 0 }));
+    } else {
+      MCApp.toast(t("campaigns.sentSuccess", { sent: res.sent ?? 0, failed: res.failed ?? 0 }));
+    }
+    await loadCampaigns();
+  } catch (err) {
+    MCApp.toast(I18N.t("common.error"), "error");
+  }
+}
+
+async function pauseSending(id) {
+  if (!confirm(I18N.t("campaigns.confirmPause"))) return;
+  try {
+    await MCApi.Campaigns.pause(id);
+    MCApp.toast(I18N.t("campaigns.pausedToast"));
+    await loadCampaigns();
+  } catch (err) {
+    MCApp.toast(I18N.t("common.error"), "error");
+  }
+}
+
+async function resumeSending(id) {
+  try {
+    const res = await MCApi.Campaigns.resume(id);
     if (res.status === "Sending") {
       MCApp.toast(t("campaigns.sendingInProgress", { sent: res.sent ?? 0, remaining: res.remaining ?? 0 }));
     } else {

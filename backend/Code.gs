@@ -85,6 +85,8 @@ function routeAction_(action, body) {
     case "campaigns.send":    return sendCampaign_(body.id);
     case "campaigns.retryFailed": return retryFailedMessages_(body.id);
     case "campaigns.logs":     return { ok: true, rows: sheetToObjects_("Logs").filter(function (l) { return String(l.CampaignID) === String(body.id); }) };
+    case "campaigns.pause":    return { ok: true, row: updateRow_("Campaigns", body.id, { Status: "Paused" }) };
+    case "campaigns.resume":   return sendCampaign_(body.id, { forceResume: true });
 
     case "templates.list":    return { ok: true, rows: sheetToObjects_("Templates") };
     case "templates.create":  return { ok: true, row: appendRow_("Templates", body.template) };
@@ -449,10 +451,13 @@ function sendOneCampaignMessage_(campaign, doctor) {
  */
 var CAMPAIGN_BATCH_SIZE_ = 150;
 
-function sendCampaign_(campaignId) {
+function sendCampaign_(campaignId, options) {
   var campaigns = sheetToObjects_("Campaigns");
   var campaign = campaigns.find(function (c) { return String(c.ID) === String(campaignId); });
   if (!campaign) return { ok: false, error: "Campaign not found" };
+  if (campaign.Status === "Paused" && !(options && options.forceResume)) {
+    return { ok: false, error: "Campaign is paused" };
+  }
 
   var recipientIds = campaign.RecipientIds
     ? String(campaign.RecipientIds).split(",").map(function (s) { return s.trim(); }).filter(Boolean)

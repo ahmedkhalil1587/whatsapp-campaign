@@ -56,6 +56,8 @@ const MCApi = (() => {
     send: (id) => call("campaigns.send", { id }),
     retryFailed: (id) => call("campaigns.retryFailed", { id }),
     logs: (id) => call("campaigns.logs", { id }),
+    pause: (id) => call("campaigns.pause", { id }),
+    resume: (id) => call("campaigns.resume", { id }),
   };
 
   const Templates = {
