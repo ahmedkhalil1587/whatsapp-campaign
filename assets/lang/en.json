@@ -21,7 +21,7 @@
   },
   "login": {
     "title": "Sign in to your workspace",
-    "subtitle": "Send trusted WhatsApp updates to your doctor network.",
+    "subtitle": "Send trusted WhatsApp updates to your client network.",
     "username": "Username",
     "usernamePlaceholder": "e.g. omar.hassan",
     "password": "Password",
@@ -40,7 +40,7 @@
     "welcomeSub": "Here's what's happening with your campaigns today.",
     "newCampaign": "New campaign",
     "stats": {
-      "totalDoctors": "Total Doctors",
+      "totalDoctors": "Total Customers",
       "totalCampaigns": "Total Campaigns",
       "messagesSent": "Messages Sent",
       "delivered": "Delivered",

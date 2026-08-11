@@ -21,7 +21,7 @@
   },
   "login": {
     "title": "تسجيل الدخول إلى مساحة العمل",
-    "subtitle": "أرسل تحديثات واتساب موثوقة لشبكة الأطباء لديك.",
+    "subtitle": "أرسل تحديثات واتساب موثوقة لشبكة العملاء لديك",
     "username": "اسم المستخدم",
     "usernamePlaceholder": "مثال: omar.hassan",
     "password": "كلمة المرور",
@@ -40,7 +40,7 @@
     "welcomeSub": "ده ملخص حملاتك النهاردة.",
     "newCampaign": "حملة جديدة",
     "stats": {
-      "totalDoctors": "إجمالي الأطباء",
+      "totalDoctors": "إجمالي العملاء",
       "totalCampaigns": "إجمالي الحملات",
       "messagesSent": "رسائل مرسلة",
       "delivered": "تم التسليم",
