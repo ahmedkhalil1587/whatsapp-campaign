@@ -1,0 +1,128 @@
+/**
+ * inbox.js
+ * A simple two-pane inbox: conversation list on the left (one row per
+ * mobile number, from the "Inbox" sheet, populated by the webhook when
+ * customers message the business number), and a WhatsApp-style thread
+ * on the right with a reply box. Replies are free-form text, so they
+ * only deliver within the customer's 24h reply window — same rule as
+ * everywhere else in the app.
+ */
+
+let allConversations = [];
+let activeMobile = null;
+let pollTimer = null;
+
+function escapeHtml(str) {
+  if (str === undefined || str === null) return "";
+  return String(str).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+async function loadConversations(preserveSelection = true) {
+  const note = document.getElementById("notConnectedNote");
+  if (!MCApi.isConfigured()) {
+    note.classList.remove("d-none");
+    allConversations = [];
+    renderConvList();
+    return;
+  }
+  note.classList.add("d-none");
+  try {
+    const res = await MCApi.Inbox.list();
+    allConversations = res.rows || [];
+    renderConvList();
+    if (preserveSelection && activeMobile) loadThread(activeMobile, false);
+  } catch (err) {
+    renderConvList();
+  }
+}
+
+function renderConvList() {
+  const box = document.getElementById("convItems");
+  const q = document.getElementById("convSearch").value.trim().toLowerCase();
+  const rows = allConversations.filter((c) => !q
+    || String(c.CustomerName || "").toLowerCase().includes(q)
+    || String(c.MobileNumber || "").includes(q));
+
+  if (rows.length === 0) {
+    box.innerHTML = `<div class="p-3 text-center text-secondary small">${I18N.t("inbox.empty")}</div>`;
+    return;
+  }
+  const dateFmt = new Intl.DateTimeFormat(I18N.lang === "ar" ? "ar-EG" : "en-US", { dateStyle: "short", timeStyle: "short" });
+  box.innerHTML = rows.map((c) => `
+    <div class="conv-item ${c.MobileNumber === activeMobile ? "active" : ""}" data-mobile="${escapeHtml(c.MobileNumber)}">
+      <div class="d-flex justify-content-between align-items-center">
+        <span class="conv-name">${escapeHtml(c.CustomerName) || I18N.t("inbox.unknownCustomer")}</span>
+        <span class="conv-time">${c.LastTimestamp ? dateFmt.format(new Date(c.LastTimestamp)) : ""}</span>
+      </div>
+      <div class="conv-preview" dir="ltr">${escapeHtml(c.MobileNumber)}</div>
+      <div class="conv-preview">${c.LastDirection === "out" ? "↩ " : ""}${escapeHtml(c.LastMessage)}</div>
+    </div>`).join("");
+
+  box.querySelectorAll(".conv-item").forEach((el) => {
+    el.addEventListener("click", () => loadThread(el.getAttribute("data-mobile"), true));
+  });
+}
+
+async function loadThread(mobile, scrollToBottom) {
+  activeMobile = mobile;
+  renderConvList();
+  document.getElementById("emptyPane").classList.add("d-none");
+  document.getElementById("activeThread").classList.remove("d-none");
+
+  const conv = allConversations.find((c) => c.MobileNumber === mobile);
+  document.getElementById("threadName").textContent = (conv && conv.CustomerName) || I18N.t("inbox.unknownCustomer");
+  document.getElementById("threadMobile").textContent = mobile;
+
+  try {
+    const res = await MCApi.Inbox.thread(mobile);
+    renderThread(res.rows || [], scrollToBottom);
+  } catch (err) {
+    MCApp.toast(I18N.t("common.error"), "error");
+  }
+}
+
+function renderThread(rows, scrollToBottom) {
+  const body = document.getElementById("threadBody");
+  const timeFmt = new Intl.DateTimeFormat(I18N.lang === "ar" ? "ar-EG" : "en-US", { hour: "2-digit", minute: "2-digit" });
+  body.innerHTML = rows.map((r) => `
+    <div class="msg-bubble ${r.Direction === "out" ? "out" : "in"}">
+      <div>${escapeHtml(r.Body)}</div>
+      <div class="msg-time">${r.Timestamp ? timeFmt.format(new Date(r.Timestamp)) : ""}</div>
+    </div>`).join("");
+  if (scrollToBottom) body.scrollTop = body.scrollHeight;
+}
+
+async function sendReply() {
+  const input = document.getElementById("replyInput");
+  const text = input.value.trim();
+  if (!text || !activeMobile) return;
+  const btn = document.getElementById("sendReplyBtn");
+  btn.disabled = true;
+  try {
+    await MCApi.Inbox.send(activeMobile, text);
+    input.value = "";
+    await loadThread(activeMobile, true);
+    await loadConversations(true);
+  } catch (err) {
+    MCApp.toast(I18N.t("inbox.sendError"), "error");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  setTimeout(() => loadConversations(false), 60);
+
+  document.getElementById("convSearch").addEventListener("input", renderConvList);
+  document.getElementById("refreshBtn").addEventListener("click", () => loadConversations(true));
+  document.getElementById("sendReplyBtn").addEventListener("click", sendReply);
+  document.getElementById("replyInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") sendReply();
+  });
+
+  // Light polling so new incoming messages show up without a manual refresh.
+  pollTimer = setInterval(() => { if (MCApi.isConfigured()) loadConversations(true); }, 20000);
+  window.addEventListener("beforeunload", () => clearInterval(pollTimer));
+});
+
+I18N.onChange(() => { renderConvList(); if (activeMobile) loadThread(activeMobile, false); });

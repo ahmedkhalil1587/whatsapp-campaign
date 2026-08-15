@@ -75,6 +75,12 @@ const MCApi = (() => {
     list: () => call("history.list"),
   };
 
+  const Inbox = {
+    list: () => call("inbox.list"),
+    thread: (mobile) => call("inbox.thread", { mobile }),
+    send: (mobile, text) => call("inbox.send", { mobile, text }),
+  };
+
   const Settings = {
     get: () => call("settings.get"),
     save: (settings) => call("settings.save", { settings }),
@@ -84,5 +90,5 @@ const MCApi = (() => {
     upload: (filename, mimeType, base64) => call("media.upload", { filename, mimeType, base64 }),
   };
 
-  return { call, getBaseUrl, setBaseUrl, isConfigured, Doctors, Campaigns, Templates, Dashboard, History, Settings, Media };
+  return { call, getBaseUrl, setBaseUrl, isConfigured, Doctors, Campaigns, Templates, Dashboard, History, Inbox, Settings, Media };
 })();

@@ -9,6 +9,7 @@
  *   Campaigns  : ID | Name | Message | ImageUrl | PdfUrl | Status | ScheduledAt | CreatedAt | Sent | Delivered | Read | Failed | RecipientIds | MessageType | TemplateName | TemplateLanguage | TemplateParams | TemplateParamNames
  *   Templates  : ID | Name | Body
  *   Logs       : Timestamp | CampaignID | DoctorID | MobileNumber | WaMessageId | Status
+ *   Inbox      : Timestamp | MobileNumber | CustomerID | Direction | Body | WaMessageId | Status
  *   Users      : Username | Password | Name | Role
  *
  * Secrets (Phone Number ID, Access Token, etc.) are NEVER stored in the
@@ -35,13 +36,14 @@ function doGet(e) {
 }
 
 function doPost(e) {
-  // Meta sends delivery/read/failed status updates without our "action" field —
-  // route those to the webhook handler instead of the app router.
+  // Meta sends delivery/read/failed status updates AND incoming customer
+  // messages without our "action" field — route those to the webhook
+  // handler instead of the app router.
   if (e.postData && e.postData.contents) {
     try {
       var maybePayload = JSON.parse(e.postData.contents);
       if (maybePayload.object === "whatsapp_business_account") {
-        handleWebhookStatus_(maybePayload);
+        handleWebhookEvent_(maybePayload);
         return ContentService.createTextOutput(JSON.stringify({ ok: true }))
           .setMimeType(ContentService.MimeType.JSON);
       }
@@ -98,6 +100,10 @@ function routeAction_(action, body) {
     case "dashboard.stats":   return { ok: true, stats: buildDashboardStats_() };
 
     case "history.list":      return { ok: true, rows: buildHistoryRows_() };
+
+    case "inbox.list":        return { ok: true, rows: buildInboxConversations_() };
+    case "inbox.thread":      return { ok: true, rows: sheetToObjects_("Inbox").filter(function (r) { return String(r.MobileNumber).trim() === String(body.mobile).trim(); }).sort(function (a, b) { return new Date(a.Timestamp) - new Date(b.Timestamp); }) };
+    case "inbox.send":        return sendInboxReply_(body.mobile, body.text);
 
     case "settings.get":      return { ok: true, settings: getPublicSettings_() };
     case "settings.save":     return { ok: true, settings: saveSettings_(body.settings) };
@@ -588,40 +594,116 @@ function setupScheduleTrigger_() {
 // no "action" field, so they fall through to this handler instead.
 // ---------------------------------------------------------------
 
-function handleWebhookStatus_(payload) {
+/** Entry point for every webhook event from Meta — dispatches to status updates and/or incoming messages. */
+function handleWebhookEvent_(payload) {
   try {
     var entry = payload.entry && payload.entry[0];
-    var change = entry && entry.changes && entry.changes[0];
-    var statuses = change && change.value && change.value.statuses;
-    if (!statuses) return;
-    statuses.forEach(function (s) {
-      // Update the matching Logs row so history / retry can reflect real delivery state.
-      var sheet = getSheet_("Logs");
-      var values = sheet.getDataRange().getValues();
-      var headers = values[0];
-      var waCol = headers.indexOf("WaMessageId");
-      var statusCol = headers.indexOf("Status");
-
-      // Build a detailed status string when Meta includes an error reason
-      // (e.g. delivery failures), instead of just the bare word "failed".
-      var statusText = s.status;
-      if (s.errors && s.errors.length) {
-        var e = s.errors[0];
-        var detail = (e.title || e.message || "Delivery failed");
-        if (e.error_data && e.error_data.details) detail += " — " + e.error_data.details;
-        statusText = s.status + ": (#" + e.code + ") " + detail;
-      }
-
-      for (var i = 1; i < values.length; i++) {
-        if (values[i][waCol] === s.id) {
-          sheet.getRange(i + 1, statusCol + 1).setValue(statusText);
-          break;
-        }
-      }
+    var changes = (entry && entry.changes) || [];
+    changes.forEach(function (change) {
+      var value = change.value || {};
+      if (value.statuses) handleWebhookStatuses_(value.statuses);
+      if (value.messages) handleWebhookMessages_(value.messages, value.contacts);
     });
   } catch (err) {
     // Swallow — webhook delivery should never throw back to Meta.
   }
+}
+
+function handleWebhookStatuses_(statuses) {
+  statuses.forEach(function (s) {
+    // Update the matching Logs row so history / retry can reflect real delivery state.
+    var sheet = getSheet_("Logs");
+    var values = sheet.getDataRange().getValues();
+    var headers = values[0];
+    var waCol = headers.indexOf("WaMessageId");
+    var statusCol = headers.indexOf("Status");
+
+    // Build a detailed status string when Meta includes an error reason
+    // (e.g. delivery failures), instead of just the bare word "failed".
+    var statusText = s.status;
+    if (s.errors && s.errors.length) {
+      var e = s.errors[0];
+      var detail = (e.title || e.message || "Delivery failed");
+      if (e.error_data && e.error_data.details) detail += " — " + e.error_data.details;
+      statusText = s.status + ": (#" + e.code + ") " + detail;
+    }
+
+    for (var i = 1; i < values.length; i++) {
+      if (values[i][waCol] === s.id) {
+        sheet.getRange(i + 1, statusCol + 1).setValue(statusText);
+        break;
+      }
+    }
+  });
+}
+
+/** Saves incoming customer messages to the Inbox sheet so they show up in the app's Messages/Inbox page. */
+function handleWebhookMessages_(messages, contacts) {
+  var doctors = sheetToObjects_("Doctors");
+  var doctorByMobile = {};
+  doctors.forEach(function (d) { doctorByMobile[String(d.Mobile).trim()] = d; });
+
+  messages.forEach(function (m) {
+    var mobile = String(m.from || "").trim();
+    var body = "";
+    if (m.type === "text" && m.text) body = m.text.body;
+    else if (m.type) body = "[" + m.type + "]"; // image/audio/document/etc — no text body to show
+    var doctor = doctorByMobile[mobile];
+
+    appendRow_("Inbox", {
+      Timestamp: m.timestamp ? new Date(Number(m.timestamp) * 1000).toISOString() : new Date().toISOString(),
+      MobileNumber: mobile,
+      CustomerID: doctor ? doctor.ID : "",
+      Body: body,
+      WaMessageId: m.id || "",
+      Status: "received",
+    });
+  });
+}
+
+/** Returns one row per conversation (most recent message per mobile number), newest first. */
+function buildInboxConversations_() {
+  var rows = sheetToObjects_("Inbox");
+  var doctors = sheetToObjects_("Doctors");
+  var doctorByMobile = {};
+  doctors.forEach(function (d) { doctorByMobile[String(d.Mobile).trim()] = d; });
+
+  var byMobile = {};
+  rows.forEach(function (r) {
+    var mobile = String(r.MobileNumber).trim();
+    if (!byMobile[mobile] || new Date(r.Timestamp) > new Date(byMobile[mobile].Timestamp)) {
+      byMobile[mobile] = r;
+    }
+  });
+
+  return Object.keys(byMobile).map(function (mobile) {
+    var last = byMobile[mobile];
+    var doctor = doctorByMobile[mobile];
+    return {
+      MobileNumber: mobile,
+      CustomerName: doctor ? doctor.Name : "",
+      LastMessage: last.Body,
+      LastDirection: last.Direction,
+      LastTimestamp: last.Timestamp,
+    };
+  }).sort(function (a, b) { return new Date(b.LastTimestamp) - new Date(a.LastTimestamp); });
+}
+
+/** Sends a free-form reply to a customer (only deliverable within their 24h window) and logs it to Inbox. */
+function sendInboxReply_(mobile, body) {
+  var waMessageId = sendWhatsAppMessage_(mobile, body, null);
+  var doctors = sheetToObjects_("Doctors");
+  var doctor = doctors.find(function (d) { return String(d.Mobile).trim() === String(mobile).trim(); });
+  appendRow_("Inbox", {
+    Timestamp: new Date().toISOString(),
+    MobileNumber: mobile,
+    CustomerID: doctor ? doctor.ID : "",
+    Direction: "out",
+    Body: body,
+    WaMessageId: waMessageId || "",
+    Status: "sent",
+  });
+  return { ok: true };
 }
 
 /**

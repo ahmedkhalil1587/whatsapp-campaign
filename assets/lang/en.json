@@ -9,6 +9,7 @@
     "doctors": "Customers",
     "templates": "Templates",
     "history": "History",
+    "inbox": "Messages",
     "settings": "Settings",
     "logout": "Log out"
   },
@@ -311,5 +312,18 @@
     "pageOf": "Page {current} of {total}",
     "exportExcel": "Export Excel",
     "exportFileName": "message-history"
+  },
+  "inbox": {
+    "title": "Messages",
+    "subtitle": "Conversations with customers who messaged you directly.",
+    "notConnected": "Connect your backend in Settings first to manage real data.",
+    "searchPlaceholder": "Search conversations...",
+    "empty": "No conversations yet. They'll appear here as soon as a customer messages you.",
+    "noThreadSelected": "Select a conversation on the left to view it.",
+    "typeMessage": "Type a reply...",
+    "send": "Send",
+    "sendError": "Could not send — the customer may be outside the 24-hour reply window.",
+    "unknownCustomer": "Unknown customer",
+    "refresh": "Refresh"
   }
 }
