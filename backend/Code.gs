@@ -82,7 +82,7 @@ function routeAction_(action, body) {
     case "doctors.delete":    return { ok: true, deleted: deleteRow_("Doctors", body.id) };
     case "doctors.bulkImport":return { ok: true, count: bulkImport_("Doctors", body.rows) };
 
-    case "campaigns.list":    return { ok: true, rows: sheetToObjects_("Campaigns") };
+    case "campaigns.list":    return { ok: true, rows: mergeLiveCampaignStats_(sheetToObjects_("Campaigns")) };
     case "campaigns.create":  return { ok: true, row: appendRow_("Campaigns", body.campaign) };
     case "campaigns.send":    return sendCampaign_(body.id);
     case "campaigns.retryFailed": return retryFailedMessages_(body.id);
@@ -235,9 +235,50 @@ function buildHistoryRows_() {
   }).reverse();
 }
 
+/**
+ * The Campaigns sheet's Sent/Delivered/Read/Failed columns are only ever
+ * written once, when a batch is sent — they never reflect later webhook
+ * updates (a message moving from "sent" to "delivered" to "read", or
+ * failing after the fact). Logs is the real source of truth, since every
+ * webhook status update rewrites that row's Status in place. This walks
+ * Logs once and returns live counts per campaign.
+ */
+function computeAllCampaignStats_() {
+  var logs = sheetToObjects_("Logs");
+  var map = {};
+  logs.forEach(function (l) {
+    var id = String(l.CampaignID);
+    if (!map[id]) map[id] = { sent: 0, delivered: 0, read: 0, failed: 0 };
+    var status = String(l.Status || "");
+    if (status.indexOf("failed") === 0) {
+      map[id].failed++;
+    } else {
+      map[id].sent++;
+      if (status === "delivered" || status === "read") map[id].delivered++;
+      if (status === "read") map[id].read++;
+    }
+  });
+  return map;
+}
+
+/** Returns Campaigns rows with Sent/Delivered/Read/Failed overwritten by the live counts from Logs. */
+function mergeLiveCampaignStats_(campaigns) {
+  var statsMap = computeAllCampaignStats_();
+  return campaigns.map(function (c) {
+    var s = statsMap[String(c.ID)] || { sent: 0, delivered: 0, read: 0, failed: 0 };
+    var merged = {};
+    Object.keys(c).forEach(function (k) { merged[k] = c[k]; });
+    merged.Sent = s.sent;
+    merged.Delivered = s.delivered;
+    merged.Read = s.read;
+    merged.Failed = s.failed;
+    return merged;
+  });
+}
+
 function buildDashboardStats_() {
   var doctors = sheetToObjects_("Doctors");
-  var campaigns = sheetToObjects_("Campaigns");
+  var campaigns = mergeLiveCampaignStats_(sheetToObjects_("Campaigns"));
   var sent = 0, delivered = 0, read = 0, failed = 0;
   campaigns.forEach(function (c) {
     sent += Number(c.Sent || 0);
@@ -638,17 +679,22 @@ function handleWebhookStatuses_(statuses) {
 }
 
 /** Saves incoming customer messages to the Inbox sheet so they show up in the app's Messages/Inbox page. */
+/** Strips everything except digits, so "+20 100 123 4567", "20-100-1234567", and "201001234567" all match. */
+function normalizeMobile_(mobile) {
+  return String(mobile || "").replace(/[^0-9]/g, "");
+}
+
 function handleWebhookMessages_(messages, contacts) {
   var doctors = sheetToObjects_("Doctors");
   var doctorByMobile = {};
-  doctors.forEach(function (d) { doctorByMobile[String(d.Mobile).trim()] = d; });
+  doctors.forEach(function (d) { doctorByMobile[normalizeMobile_(d.Mobile)] = d; });
 
   messages.forEach(function (m) {
     var mobile = String(m.from || "").trim();
     var body = "";
     if (m.type === "text" && m.text) body = m.text.body;
     else if (m.type) body = "[" + m.type + "]"; // image/audio/document/etc — no text body to show
-    var doctor = doctorByMobile[mobile];
+    var doctor = doctorByMobile[normalizeMobile_(mobile)];
 
     appendRow_("Inbox", {
       Timestamp: m.timestamp ? new Date(Number(m.timestamp) * 1000).toISOString() : new Date().toISOString(),
@@ -666,7 +712,7 @@ function buildInboxConversations_() {
   var rows = sheetToObjects_("Inbox");
   var doctors = sheetToObjects_("Doctors");
   var doctorByMobile = {};
-  doctors.forEach(function (d) { doctorByMobile[String(d.Mobile).trim()] = d; });
+  doctors.forEach(function (d) { doctorByMobile[normalizeMobile_(d.Mobile)] = d; });
 
   var byMobile = {};
   rows.forEach(function (r) {
@@ -678,7 +724,7 @@ function buildInboxConversations_() {
 
   return Object.keys(byMobile).map(function (mobile) {
     var last = byMobile[mobile];
-    var doctor = doctorByMobile[mobile];
+    var doctor = doctorByMobile[normalizeMobile_(mobile)];
     return {
       MobileNumber: mobile,
       CustomerName: doctor ? doctor.Name : "",
@@ -693,7 +739,7 @@ function buildInboxConversations_() {
 function sendInboxReply_(mobile, body) {
   var waMessageId = sendWhatsAppMessage_(mobile, body, null);
   var doctors = sheetToObjects_("Doctors");
-  var doctor = doctors.find(function (d) { return String(d.Mobile).trim() === String(mobile).trim(); });
+  var doctor = doctors.find(function (d) { return normalizeMobile_(d.Mobile) === normalizeMobile_(mobile); });
   appendRow_("Inbox", {
     Timestamp: new Date().toISOString(),
     MobileNumber: mobile,

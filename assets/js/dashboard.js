@@ -69,13 +69,24 @@ function renderRecentCampaigns(rows) {
   }
   const dateFmt = new Intl.DateTimeFormat(I18N.lang === "ar" ? "ar-EG" : "en-US", { year: "numeric", month: "short", day: "numeric" });
   const numFmt = new Intl.NumberFormat(I18N.lang === "ar" ? "ar-EG" : "en-US");
+  const formatDate = (value) => {
+    const d = value ? new Date(value) : null;
+    return d && !isNaN(d.getTime()) ? dateFmt.format(d) : "—";
+  };
+  const statusKey = (s) => {
+    const v = String(s || "draft").toLowerCase();
+    if (v === "completed") return "completed";
+    if (v === "scheduled") return "scheduled";
+    if (v === "sending") return "inProgress";
+    return "draft"; // draft, paused, failed, or anything else
+  };
   body.innerHTML = rows.map((c) => `
     <tr>
-      <td class="fw-semibold">${c.name}</td>
-      <td class="text-secondary">${dateFmt.format(new Date(c.date))}</td>
-      <td>${numFmt.format(c.recipients)}</td>
-      <td>${numFmt.format(c.delivered)}</td>
-      <td><span class="badge-status ${c.status}" data-i18n="dashboard.status.${c.status}">${I18N.t(`dashboard.status.${c.status}`)}</span></td>
+      <td class="fw-semibold">${c.name || "—"}</td>
+      <td class="text-secondary">${formatDate(c.date)}</td>
+      <td>${numFmt.format(c.recipients || 0)}</td>
+      <td>${numFmt.format(c.delivered || 0)}</td>
+      <td><span class="badge-status ${statusKey(c.status)}" data-i18n="dashboard.status.${statusKey(c.status)}">${I18N.t(`dashboard.status.${statusKey(c.status)}`) || c.status}</span></td>
     </tr>`).join("");
 }
 
