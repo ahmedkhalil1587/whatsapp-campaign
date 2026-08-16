@@ -101,7 +101,7 @@ function renderThread(rows, forceScrollToBottom) {
     // ballooning to fit stray blank lines from the source message.
     const cleanBody = (r.Body || "").replace(/\n{3,}/g, "\n\n").trim();
     return `
-    <div class="msg-bubble ${r.Direction === "out" ? "out" : "in"}">
+    <div class="msg-bubble ${r.Direction === "out" ? "out" : "in"}" dir="auto">
       ${mediaHtml}
       <span class="msg-text">${escapeHtml(cleanBody)}</span><span class="msg-time">${r.Timestamp ? timeFmt.format(new Date(r.Timestamp)) : ""}</span>
     </div>`;
