@@ -24,15 +24,21 @@ const MCApi = (() => {
    * Apps Script Web Apps only reliably accept GET and POST, so every
    * action is sent as POST with an "action" field describing the intended
    * operation (mirrors REST verbs without needing PUT/DELETE support).
+   * The session token (issued at login) rides along automatically so the
+   * backend can verify identity and role on every request — not just the
+   * UI hiding buttons.
    */
   async function call(action, payload = {}) {
     const base = getBaseUrl();
     if (!base) throw new Error("Backend URL is not configured yet. Go to Settings first.");
 
+    const session = (typeof MCAuth !== "undefined" && MCAuth.getSession) ? MCAuth.getSession() : null;
+    const token = session && session.token;
+
     const res = await fetch(base, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" }, // avoids CORS preflight on Apps Script
-      body: JSON.stringify({ action, ...payload }),
+      body: JSON.stringify({ action, token, ...payload }),
     });
 
     if (!res.ok) throw new Error(`Backend request failed (${res.status})`);
@@ -79,6 +85,7 @@ const MCApi = (() => {
     list: () => call("inbox.list"),
     thread: (mobile) => call("inbox.thread", { mobile }),
     send: (mobile, text) => call("inbox.send", { mobile, text }),
+    sendMedia: (mobile, mediaUrl, mediaType, caption, filename) => call("inbox.sendMedia", { mobile, mediaUrl, mediaType, caption, filename }),
   };
 
   const Settings = {
@@ -90,5 +97,16 @@ const MCApi = (() => {
     upload: (filename, mimeType, base64) => call("media.upload", { filename, mimeType, base64 }),
   };
 
-  return { call, getBaseUrl, setBaseUrl, isConfigured, Doctors, Campaigns, Templates, Dashboard, History, Inbox, Settings, Media };
+  const AuthApi = {
+    register: (name, email, password) => call("auth.register", { name, email, password }),
+    verify: (email, code) => call("auth.verify", { email, code }),
+  };
+
+  const Signups = {
+    list: () => call("signups.list"),
+    approve: (id, role) => call("signups.approve", { id, role }),
+    reject: (id) => call("signups.reject", { id }),
+  };
+
+  return { call, getBaseUrl, setBaseUrl, isConfigured, Doctors, Campaigns, Templates, Dashboard, History, Inbox, Settings, Media, AuthApi, Signups };
 })();

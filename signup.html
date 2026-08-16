@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MedConnect Campaigns — Sign up</title>
+
+<link id="bootstrap-css" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=IBM+Plex+Sans+Arabic:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<div class="auth-shell">
+  <div class="auth-visual">
+    <div class="pulse-line"></div>
+    <div class="brand-mark" style="position:relative;z-index:1;">
+      <span class="dot"></span>
+      <span data-i18n="meta.appName">MedConnect Campaigns</span>
+    </div>
+    <div class="quote" style="position:relative;z-index:1;" data-i18n="signup.visualQuote">
+      Request an account and an admin will review it shortly.
+    </div>
+  </div>
+
+  <div class="auth-panel">
+    <div class="auth-card">
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <div class="d-flex align-items-center gap-2 fw-bold" style="color:var(--mc-primary);">
+          <i class="bi bi-heart-pulse-fill fs-4"></i>
+          <span data-i18n="meta.appName">MedConnect Campaigns</span>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          <div class="lang-toggle">
+            <button type="button" data-lang-option="en">EN</button>
+            <button type="button" data-lang-option="ar">AR</button>
+          </div>
+          <button type="button" class="icon-btn" id="themeToggleBtn"><i class="bi bi-moon-stars" id="themeToggleIcon"></i></button>
+        </div>
+      </div>
+
+      <!-- Step 1: request form -->
+      <div id="requestStep">
+        <h1 class="h4 fw-bold mb-1" data-i18n="signup.title">Request an account</h1>
+        <p class="text-secondary small mb-4" data-i18n="signup.subtitle">Fill this in, and an admin will review your request.</p>
+
+        <div id="requestAlert" class="alert alert-danger py-2 small d-none"></div>
+
+        <form id="requestForm">
+          <div class="mb-3">
+            <label class="form-label" data-i18n="signup.name">Full name</label>
+            <input type="text" class="form-control" id="fieldName" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" data-i18n="signup.email">Email</label>
+            <input type="email" class="form-control" id="fieldEmail" required>
+          </div>
+          <div class="mb-4">
+            <label class="form-label" data-i18n="signup.password">Password</label>
+            <input type="password" class="form-control" id="fieldPassword" required minlength="6">
+          </div>
+          <button type="submit" class="btn btn-mc-primary w-100" id="requestBtn">
+            <span data-i18n="signup.submitRequest">Send request</span>
+          </button>
+        </form>
+      </div>
+
+      <!-- Step 2: activation (shown after a successful request, or reachable directly) -->
+      <div id="activateStep" class="d-none">
+        <h1 class="h4 fw-bold mb-1" data-i18n="signup.activateTitle">Activate your account</h1>
+        <p class="text-secondary small mb-4" data-i18n="signup.activateSubtitle">Enter the 6-digit code we emailed you once an admin approves your request.</p>
+
+        <div id="activateAlert" class="alert alert-danger py-2 small d-none"></div>
+        <div id="activateSuccess" class="alert alert-success py-2 small d-none"></div>
+
+        <form id="activateForm">
+          <div class="mb-3">
+            <label class="form-label" data-i18n="signup.email">Email</label>
+            <input type="email" class="form-control" id="activateEmail" required>
+          </div>
+          <div class="mb-4">
+            <label class="form-label" data-i18n="signup.code">Activation code</label>
+            <input type="text" class="form-control" id="activateCode" required maxlength="6" inputmode="numeric">
+          </div>
+          <button type="submit" class="btn btn-mc-primary w-100" id="activateBtn">
+            <span data-i18n="signup.submitActivate">Activate</span>
+          </button>
+        </form>
+      </div>
+
+      <p class="text-center small mt-4">
+        <a href="login.html" style="color:var(--mc-accent-dark);" data-i18n="signup.backToLogin">Back to sign in</a>
+        &nbsp;·&nbsp;
+        <a href="#" id="showActivateLink" style="color:var(--mc-accent-dark);" data-i18n="signup.haveCode">I already have a code</a>
+      </p>
+    </div>
+  </div>
+</div>
+
+<script src="assets/js/i18n.js"></script>
+<script src="assets/js/app.js"></script>
+<script src="assets/js/api.js"></script>
+<script src="assets/js/auth.js"></script>
+<script>
+  if (MCAuth.isLoggedIn()) window.location.href = "dashboard.html";
+
+  function showStep(step) {
+    document.getElementById("requestStep").classList.toggle("d-none", step !== "request");
+    document.getElementById("activateStep").classList.toggle("d-none", step !== "activate");
+  }
+
+  document.getElementById("showActivateLink").addEventListener("click", (e) => { e.preventDefault(); showStep("activate"); });
+
+  document.getElementById("requestForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const alertBox = document.getElementById("requestAlert");
+    alertBox.classList.add("d-none");
+    if (!MCApi.isConfigured()) { alertBox.textContent = I18N.t("common.error"); alertBox.classList.remove("d-none"); return; }
+
+    const name = document.getElementById("fieldName").value.trim();
+    const email = document.getElementById("fieldEmail").value.trim();
+    const password = document.getElementById("fieldPassword").value;
+    const btn = document.getElementById("requestBtn");
+    btn.disabled = true;
+
+    try {
+      await MCApi.AuthApi.register(name, email, password);
+      document.getElementById("activateEmail").value = email;
+      showStep("activate");
+      document.getElementById("activateSuccess").textContent = I18N.t("signup.requestSentNote");
+      document.getElementById("activateSuccess").classList.remove("d-none");
+    } catch (err) {
+      alertBox.textContent = err.message || I18N.t("common.error");
+      alertBox.classList.remove("d-none");
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  document.getElementById("activateForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const alertBox = document.getElementById("activateAlert");
+    alertBox.classList.add("d-none");
+    const email = document.getElementById("activateEmail").value.trim();
+    const code = document.getElementById("activateCode").value.trim();
+    const btn = document.getElementById("activateBtn");
+    btn.disabled = true;
+
+    try {
+      await MCApi.AuthApi.verify(email, code);
+      window.location.href = "login.html";
+    } catch (err) {
+      alertBox.textContent = err.message || I18N.t("signup.activateError");
+      alertBox.classList.remove("d-none");
+    } finally {
+      btn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

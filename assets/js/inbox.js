@@ -84,11 +84,21 @@ async function loadThread(mobile, scrollToBottom) {
 function renderThread(rows, scrollToBottom) {
   const body = document.getElementById("threadBody");
   const timeFmt = new Intl.DateTimeFormat(I18N.lang === "ar" ? "ar-EG" : "en-US", { hour: "2-digit", minute: "2-digit" });
-  body.innerHTML = rows.map((r) => `
+  body.innerHTML = rows.map((r) => {
+    const isImage = r.MediaUrl && /\.(jpe?g|png|gif|webp)$/i.test(r.MediaUrl);
+    const isDoc = r.MediaUrl && !isImage;
+    const mediaHtml = isImage
+      ? `<img src="${escapeHtml(r.MediaUrl)}" style="max-width:100%;border-radius:8px;margin-bottom:4px;display:block;">`
+      : isDoc
+        ? `<a href="${escapeHtml(r.MediaUrl)}" target="_blank" class="d-flex align-items-center gap-2 mb-1"><i class="bi bi-file-earmark-fill"></i> <span class="text-decoration-underline">${I18N.t("inbox.attachment")}</span></a>`
+        : "";
+    return `
     <div class="msg-bubble ${r.Direction === "out" ? "out" : "in"}">
+      ${mediaHtml}
       <div>${escapeHtml(r.Body)}</div>
       <div class="msg-time">${r.Timestamp ? timeFmt.format(new Date(r.Timestamp)) : ""}</div>
-    </div>`).join("");
+    </div>`;
+  }).join("");
   if (scrollToBottom) body.scrollTop = body.scrollHeight;
 }
 
@@ -110,6 +120,34 @@ async function sendReply() {
   }
 }
 
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(",")[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function sendAttachment(file) {
+  if (!file || !activeMobile) return;
+  if (!MCApi.isConfigured()) { MCApp.toast(I18N.t("common.error"), "error"); return; }
+  const btn = document.getElementById("attachBtn");
+  btn.disabled = true;
+  try {
+    const base64 = await fileToBase64(file);
+    const uploadRes = await MCApi.Media.upload(file.name, file.type, base64);
+    const mediaType = file.type.startsWith("image/") ? "image" : "document";
+    await MCApi.Inbox.sendMedia(activeMobile, uploadRes.url, mediaType, "", file.name);
+    await loadThread(activeMobile, true);
+    await loadConversations(true);
+  } catch (err) {
+    MCApp.toast(I18N.t("inbox.sendError"), "error");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   setTimeout(() => loadConversations(false), 60);
 
@@ -118,6 +156,11 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("sendReplyBtn").addEventListener("click", sendReply);
   document.getElementById("replyInput").addEventListener("keydown", (e) => {
     if (e.key === "Enter") sendReply();
+  });
+  document.getElementById("attachBtn").addEventListener("click", () => document.getElementById("attachFileInput").click());
+  document.getElementById("attachFileInput").addEventListener("change", (e) => {
+    sendAttachment(e.target.files[0]);
+    e.target.value = "";
   });
 
   // Light polling so new incoming messages show up without a manual refresh.

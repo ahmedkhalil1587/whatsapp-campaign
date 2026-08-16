@@ -26,6 +26,7 @@ const MCAuth = (() => {
     if (typeof MCApi !== "undefined" && MCApi.isConfigured()) {
       const res = await MCApi.call("auth.login", { username, password });
       user = res.user;
+      if (user) user.token = res.token;
     } else if (username === DEMO_USER.username && password === DEMO_USER.password) {
       user = { username: DEMO_USER.username, name: DEMO_USER.name, role: "admin" };
     }
@@ -43,10 +44,46 @@ const MCAuth = (() => {
     window.location.href = "login.html";
   }
 
-  /** Call at the top of every protected page. */
-  function guard() {
-    if (!isLoggedIn()) window.location.href = "login.html";
+  // Pages a non-admin role is allowed to see. Deny-by-default: any role
+  // other than "admin" (including missing/unrecognized roles) only gets
+  // this restricted set. Add more roles here later if needed.
+  const ROLE_ALLOWED_PAGES = {
+    agent: ["doctors", "inbox"],
+  };
+  const FALLBACK_PAGE = "doctors.html";
+
+  function currentRole() {
+    const session = getSession();
+    return (session && session.role) || "admin";
   }
 
-  return { login, logout, guard, isLoggedIn, getSession };
+  function isAdmin() {
+    return currentRole() === "admin";
+  }
+
+  /** Hides sidebar links the current role isn't allowed to see. Safe to call on every page. */
+  function applyRoleUI() {
+    if (isAdmin()) return;
+    const allowed = ROLE_ALLOWED_PAGES[currentRole()] || [];
+    document.querySelectorAll(".sidebar .nav-link[data-page]").forEach((link) => {
+      if (!allowed.includes(link.getAttribute("data-page"))) link.style.display = "none";
+    });
+  }
+
+  /** Redirects away if the current role isn't allowed on this page. Safe to call on every page. */
+  function enforcePageAccess() {
+    if (isAdmin()) return;
+    const allowed = ROLE_ALLOWED_PAGES[currentRole()] || [];
+    const page = document.body.getAttribute("data-page");
+    if (page && !allowed.includes(page)) window.location.href = FALLBACK_PAGE;
+  }
+
+  /** Call at the top of every protected page. */
+  function guard() {
+    if (!isLoggedIn()) { window.location.href = "login.html"; return; }
+    enforcePageAccess();
+    applyRoleUI();
+  }
+
+  return { login, logout, guard, isLoggedIn, getSession, isAdmin, currentRole };
 })();

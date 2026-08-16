@@ -10,6 +10,7 @@
     "templates": "Templates",
     "history": "History",
     "inbox": "Messages",
+    "requests": "Signup Requests",
     "settings": "Settings",
     "logout": "Log out"
   },
@@ -34,7 +35,9 @@
     "footer": "Built for medical conference teams",
     "errorRequired": "Please enter both username and password.",
     "errorInvalid": "Incorrect username or password.",
-    "demoHint": "Demo access: admin / admin123"
+    "demoHint": "Demo access: admin / admin123",
+    "noAccount": "Don't have an account?",
+    "requestAccount": "Request one"
   },
   "dashboard": {
     "welcome": "Welcome back",
@@ -324,6 +327,40 @@
     "send": "Send",
     "sendError": "Could not send — the customer may be outside the 24-hour reply window.",
     "unknownCustomer": "Unknown customer",
+    "attachment": "Attachment",
     "refresh": "Refresh"
+  },
+  "signup": {
+    "visualQuote": "Request an account and an admin will review it shortly.",
+    "title": "Request an account",
+    "subtitle": "Fill this in, and an admin will review your request.",
+    "name": "Full name",
+    "email": "Email",
+    "password": "Password",
+    "submitRequest": "Send request",
+    "activateTitle": "Activate your account",
+    "activateSubtitle": "Enter the 6-digit code we emailed you once an admin approves your request.",
+    "code": "Activation code",
+    "submitActivate": "Activate",
+    "backToLogin": "Back to sign in",
+    "haveCode": "I already have a code",
+    "requestSentNote": "Request sent! Once an admin approves it, you'll get a code by email — enter it below.",
+    "activateError": "Invalid code, or your request hasn't been approved yet."
+  },
+  "requests": {
+    "title": "Signup Requests",
+    "subtitle": "Review new account requests, assign a role, and approve or reject.",
+    "empty": "No signup requests right now.",
+    "col": { "name": "Name", "email": "Email", "status": "Status", "role": "Role", "actions": "Actions" },
+    "statusPending": "Pending",
+    "statusApproved": "Awaiting activation",
+    "roleAgent": "Customer service",
+    "roleAdmin": "Admin",
+    "approve": "Approve",
+    "reject": "Reject",
+    "awaitingActivation": "Code emailed — waiting for user",
+    "confirmReject": "Reject this request? This cannot be undone.",
+    "approvedToast": "Approved — an activation code was emailed.",
+    "rejectedToast": "Request rejected."
   }
 }

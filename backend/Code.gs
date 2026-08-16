@@ -9,7 +9,8 @@
  *   Campaigns  : ID | Name | Message | ImageUrl | PdfUrl | Status | ScheduledAt | CreatedAt | Sent | Delivered | Read | Failed | RecipientIds | MessageType | TemplateName | TemplateLanguage | TemplateParams | TemplateParamNames
  *   Templates  : ID | Name | Body
  *   Logs       : Timestamp | CampaignID | DoctorID | MobileNumber | WaMessageId | Status
- *   Inbox      : Timestamp | MobileNumber | CustomerID | Direction | Body | WaMessageId | Status
+ *   Inbox      : Timestamp | MobileNumber | CustomerID | Direction | Body | MediaUrl | WaMessageId | Status
+ *   Signups    : ID | Timestamp | Name | Email | PasswordHash | Status | VerificationCode | Role
  *   Users      : Username | Password | Name | Role
  *
  * Secrets (Phone Number ID, Access Token, etc.) are NEVER stored in the
@@ -72,9 +73,52 @@ function handleRequest_(e) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
+// ---------------------------------------------------------------
+// Session-based authorization
+// ---------------------------------------------------------------
+// Real server-side protection: every action except the ones below needs
+// a valid token (issued at login, in CacheService — auto-expires, and
+// slides forward on activity). Non-admin roles are further restricted
+// to an explicit allow-list, so e.g. a "agent" user calling
+// "settings.save" directly (from a browser console) is rejected here,
+// not just hidden in the UI.
+
+var PUBLIC_ACTIONS_ = ["auth.login", "auth.register", "auth.verify"];
+var AGENT_ALLOWED_ACTIONS_ = ["doctors.list", "doctors.create", "doctors.update", "doctors.delete", "doctors.bulkImport", "inbox.list", "inbox.thread", "inbox.send", "inbox.sendMedia", "media.upload"];
+var SESSION_TTL_SECONDS_ = 21600; // 6 hours; slides forward on each authorized request
+
+function generateToken_(username, role) {
+  var token = Utilities.getUuid();
+  CacheService.getScriptCache().put("sess_" + token, JSON.stringify({ username: username, role: role }), SESSION_TTL_SECONDS_);
+  return token;
+}
+
+function validateToken_(token) {
+  if (!token) return null;
+  var cache = CacheService.getScriptCache();
+  var raw = cache.get("sess_" + token);
+  if (!raw) return null;
+  cache.put("sess_" + token, raw, SESSION_TTL_SECONDS_); // slide the expiration window
+  return JSON.parse(raw);
+}
+
 function routeAction_(action, body) {
+  if (PUBLIC_ACTIONS_.indexOf(action) === -1) {
+    var session = validateToken_(body.token);
+    if (!session) return { ok: false, error: "Session expired. Please log in again." };
+    if (session.role !== "admin" && AGENT_ALLOWED_ACTIONS_.indexOf(action) === -1) {
+      return { ok: false, error: "You don't have permission for this action." };
+    }
+  }
+
   switch (action) {
     case "auth.login":        return authLogin_(body.username, body.password);
+    case "auth.register":     return registerSignup_(body.name, body.email, body.password);
+    case "auth.verify":       return verifySignup_(body.email, body.code);
+
+    case "signups.list":      return { ok: true, rows: listSignups_() };
+    case "signups.approve":   return approveSignup_(body.id, body.role);
+    case "signups.reject":    return rejectSignup_(body.id);
 
     case "doctors.list":      return { ok: true, rows: sheetToObjects_("Doctors") };
     case "doctors.create":    return { ok: true, row: appendRow_("Doctors", body.doctor) };
@@ -104,6 +148,7 @@ function routeAction_(action, body) {
     case "inbox.list":        return { ok: true, rows: buildInboxConversations_() };
     case "inbox.thread":      return { ok: true, rows: sheetToObjects_("Inbox").filter(function (r) { return String(r.MobileNumber).trim() === String(body.mobile).trim(); }).sort(function (a, b) { return new Date(a.Timestamp) - new Date(b.Timestamp); }) };
     case "inbox.send":        return sendInboxReply_(body.mobile, body.text);
+    case "inbox.sendMedia":    return sendInboxMedia_(body.mobile, body.mediaUrl, body.mediaType, body.caption, body.filename);
 
     case "settings.get":      return { ok: true, settings: getPublicSettings_() };
     case "settings.save":     return { ok: true, settings: saveSettings_(body.settings) };
@@ -197,13 +242,83 @@ function bulkImport_(name, rows) {
 // Auth (simple — swap for something stronger before real production use)
 // ---------------------------------------------------------------
 
+/** SHA-256 hex digest — used for passwords set through the new self-registration flow. */
+function hashPassword_(password) {
+  var bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, password);
+  return bytes.map(function (b) { return ((b < 0 ? b + 256 : b).toString(16)).padStart(2, "0"); }).join("");
+}
+
 function authLogin_(username, password) {
   var users = sheetToObjects_("Users");
   var match = users.find(function (u) {
-    return String(u.Username) === String(username) && String(u.Password) === String(password);
+    if (String(u.Username) !== String(username)) return false;
+    var stored = String(u.Password);
+    return stored === String(password) || stored === hashPassword_(password);
   });
   if (!match) return { ok: false, error: "Invalid credentials" };
-  return { ok: true, user: { username: match.Username, name: match.Name, role: match.Role } };
+  var token = generateToken_(match.Username, match.Role);
+  return { ok: true, user: { username: match.Username, name: match.Name, role: match.Role }, token: token };
+}
+
+// ---------------------------------------------------------------
+// Self-registration with admin approval + email verification code
+// ---------------------------------------------------------------
+
+function registerSignup_(name, email, password) {
+  if (!name || !email || !password) return { ok: false, error: "Missing name, email, or password." };
+  var existing = sheetToObjects_("Signups").find(function (s) {
+    return String(s.Email).toLowerCase() === String(email).toLowerCase() && s.Status !== "rejected";
+  });
+  if (existing) return { ok: false, error: "A request for this email already exists." };
+  appendRow_("Signups", {
+    Timestamp: new Date().toISOString(),
+    Name: name,
+    Email: email,
+    PasswordHash: hashPassword_(password),
+    Status: "pending",
+    VerificationCode: "",
+    Role: "",
+  });
+  return { ok: true };
+}
+
+/** Admin-only (enforced in routeAction_). Pending + approved-but-not-yet-verified requests. */
+function listSignups_() {
+  return sheetToObjects_("Signups").filter(function (s) { return s.Status === "pending" || s.Status === "approved"; });
+}
+
+/** Admin approves a request, assigns a role, and emails a 6-digit activation code. */
+function approveSignup_(id, role) {
+  var code = String(Math.floor(100000 + Math.random() * 900000));
+  var row = updateRow_("Signups", id, { Status: "approved", VerificationCode: code, Role: role === "admin" ? "admin" : "agent" });
+  MailApp.sendEmail({
+    to: row.Email,
+    subject: "تم قبول طلب تسجيلك — كود التفعيل",
+    body: "مرحبًا " + row.Name + "،\n\n" +
+      "تم قبول طلب تسجيلك في MedConnect Campaigns.\n\n" +
+      "كود التفعيل بتاعك هو: " + code + "\n\n" +
+      "ادخل على صفحة تفعيل الحساب وحط الكود ده مع إيميلك عشان تكمل التسجيل.",
+  });
+  return { ok: true };
+}
+
+function rejectSignup_(id) {
+  updateRow_("Signups", id, { Status: "rejected" });
+  return { ok: true };
+}
+
+/** Final step: the user enters the emailed code, which actually creates their row in Users. */
+function verifySignup_(email, code) {
+  var signups = sheetToObjects_("Signups");
+  var match = signups.find(function (s) {
+    return String(s.Email).toLowerCase() === String(email).toLowerCase()
+      && s.Status === "approved"
+      && String(s.VerificationCode) === String(code);
+  });
+  if (!match) return { ok: false, error: "Invalid code, or this request hasn't been approved yet." };
+  appendRow_("Users", { Username: match.Email, Password: match.PasswordHash, Name: match.Name, Role: match.Role });
+  updateRow_("Signups", match.ID, { Status: "completed" });
+  return { ok: true };
 }
 
 // ---------------------------------------------------------------
@@ -733,6 +848,35 @@ function buildInboxConversations_() {
       LastTimestamp: last.Timestamp,
     };
   }).sort(function (a, b) { return new Date(b.LastTimestamp) - new Date(a.LastTimestamp); });
+}
+
+/** Sends an image or document attachment to a customer from the Inbox chat, and logs it. */
+function sendInboxMedia_(mobile, mediaUrl, mediaType, caption, filename) {
+  var payload = {
+    messaging_product: "whatsapp",
+    to: mobile,
+    type: mediaType === "document" ? "document" : "image",
+  };
+  if (mediaType === "document") {
+    payload.document = { link: mediaUrl, caption: caption || "", filename: filename || "file" };
+  } else {
+    payload.image = { link: mediaUrl, caption: caption || "" };
+  }
+  var waMessageId = callWhatsAppApi_(payload);
+
+  var doctors = sheetToObjects_("Doctors");
+  var doctor = doctors.find(function (d) { return normalizeMobile_(d.Mobile) === normalizeMobile_(mobile); });
+  appendRow_("Inbox", {
+    Timestamp: new Date().toISOString(),
+    MobileNumber: mobile,
+    CustomerID: doctor ? doctor.ID : "",
+    Direction: "out",
+    Body: caption || (mediaType === "document" ? "[document]" : "[image]"),
+    MediaUrl: mediaUrl,
+    WaMessageId: waMessageId || "",
+    Status: "sent",
+  });
+  return { ok: true };
 }
 
 /** Sends a free-form reply to a customer (only deliverable within their 24h window) and logs it to Inbox. */
