@@ -1,15 +1,21 @@
 /**
  * api.js — single point of contact with the Google Apps Script backend.
- * The Apps Script Web App URL is saved by the user on the Settings page
- * and stored in localStorage under "mc_gas_url". Every request goes
- * through this wrapper so auth headers / error handling stay in one place.
+ * The Apps Script Web App URL can be overridden by the user on the
+ * Settings page (stored in localStorage under "mc_gas_url"), but it also
+ * ships with a hardcoded DEFAULT_GAS_URL below so that public pages like
+ * signup.html / login.html work for visitors who have never logged in
+ * (and so never had a chance to save anything to their browser's
+ * localStorage). Every request goes through this wrapper so auth
+ * headers / error handling stay in one place.
  */
 
 const MCApi = (() => {
   const URL_KEY = "mc_gas_url";
+  // Deployed Apps Script Web App exec URL — update this after every new deployment.
+  const DEFAULT_GAS_URL = "https://script.google.com/macros/s/AKfycbyGawYVt-zuRqO_5bQMU-ieeKVyRZGAEZCrc8t8q60JLYaJCzW1bAAKD1toCGBSdquT/exec";
 
   function getBaseUrl() {
-    return localStorage.getItem(URL_KEY) || "";
+    return localStorage.getItem(URL_KEY) || DEFAULT_GAS_URL;
   }
 
   function setBaseUrl(url) {
