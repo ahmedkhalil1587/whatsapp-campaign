@@ -81,8 +81,12 @@ async function loadThread(mobile, scrollToBottom) {
   }
 }
 
-function renderThread(rows, scrollToBottom) {
+function renderThread(rows, forceScrollToBottom) {
   const body = document.getElementById("threadBody");
+  // Only auto-scroll if the user was already near the bottom (or we're told
+  // to force it, e.g. right after sending). Otherwise a live update would
+  // yank someone away from history they're scrolled up reading.
+  const wasNearBottom = forceScrollToBottom || (body.scrollHeight - body.scrollTop - body.clientHeight < 80);
   const timeFmt = new Intl.DateTimeFormat(I18N.lang === "ar" ? "ar-EG" : "en-US", { hour: "2-digit", minute: "2-digit" });
   body.innerHTML = rows.map((r) => {
     const isImage = r.MediaUrl && /\.(jpe?g|png|gif|webp)$/i.test(r.MediaUrl);
@@ -92,14 +96,17 @@ function renderThread(rows, scrollToBottom) {
       : isDoc
         ? `<a href="${escapeHtml(r.MediaUrl)}" target="_blank" class="d-flex align-items-center gap-2 mb-1"><i class="bi bi-file-earmark-fill"></i> <span class="text-decoration-underline">${I18N.t("inbox.attachment")}</span></a>`
         : "";
+    // Collapse 3+ consecutive newlines down to a single blank line, and trim
+    // leading/trailing whitespace, so bubbles hug the actual text instead of
+    // ballooning to fit stray blank lines from the source message.
+    const cleanBody = (r.Body || "").replace(/\n{3,}/g, "\n\n").trim();
     return `
     <div class="msg-bubble ${r.Direction === "out" ? "out" : "in"}">
       ${mediaHtml}
-      <div>${escapeHtml(r.Body)}</div>
-      <div class="msg-time">${r.Timestamp ? timeFmt.format(new Date(r.Timestamp)) : ""}</div>
+      <span class="msg-text">${escapeHtml(cleanBody)}</span><span class="msg-time">${r.Timestamp ? timeFmt.format(new Date(r.Timestamp)) : ""}</span>
     </div>`;
   }).join("");
-  if (scrollToBottom) body.scrollTop = body.scrollHeight;
+  if (wasNearBottom) body.scrollTop = body.scrollHeight;
 }
 
 async function sendReply() {
@@ -163,8 +170,13 @@ document.addEventListener("DOMContentLoaded", () => {
     e.target.value = "";
   });
 
-  // Light polling so new incoming messages show up without a manual refresh.
-  pollTimer = setInterval(() => { if (MCApi.isConfigured()) loadConversations(true); }, 20000);
+  // Live-updates so new incoming messages show up without a manual refresh:
+  // poll every 4s while the tab is open, and refresh immediately whenever
+  // the user comes back to this tab (e.g. after switching away for a while).
+  pollTimer = setInterval(() => { if (MCApi.isConfigured() && !document.hidden) loadConversations(true); }, 4000);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && MCApi.isConfigured()) loadConversations(true);
+  });
   window.addEventListener("beforeunload", () => clearInterval(pollTimer));
 });
 
