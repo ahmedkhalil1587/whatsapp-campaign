@@ -11,6 +11,7 @@
 let allConversations = [];
 let activeMobile = null;
 let pollTimer = null;
+let pollInFlight = false; // guards against overlapping poll cycles hammering Apps Script
 
 function escapeHtml(str) {
   if (str === undefined || str === null) return "";
@@ -175,12 +176,22 @@ document.addEventListener("DOMContentLoaded", () => {
     e.target.value = "";
   });
 
-  // Live-updates so new incoming messages show up without a manual refresh:
-  // poll every 4s while the tab is open, and refresh immediately whenever
-  // the user comes back to this tab (e.g. after switching away for a while).
-  pollTimer = setInterval(() => { if (MCApi.isConfigured() && !document.hidden) loadConversations(true); }, 4000);
+  // Live-updates so new incoming messages show up without a manual refresh.
+  // Apps Script has a low concurrent-execution ceiling, so we poll at a
+  // moderate interval (not too fast) and skip a cycle entirely if the
+  // previous one hasn't finished yet — overlapping requests were flooding
+  // the backend and causing intermittent "حدث خطأ ما" failures.
+  pollTimer = setInterval(async () => {
+    if (!MCApi.isConfigured() || document.hidden || pollInFlight) return;
+    pollInFlight = true;
+    try {
+      await loadConversations(true);
+    } finally {
+      pollInFlight = false;
+    }
+  }, 10000);
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden && MCApi.isConfigured()) loadConversations(true);
+    if (!document.hidden && MCApi.isConfigured() && !pollInFlight) loadConversations(true);
   });
   window.addEventListener("beforeunload", () => clearInterval(pollTimer));
 });
