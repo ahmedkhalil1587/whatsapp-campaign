@@ -29,7 +29,7 @@ async function loadConversations(preserveSelection = true) {
   note.classList.add("d-none");
   try {
     const res = await MCApi.Inbox.list();
-    allConversations = res.rows || [];
+    allConversations = (res.rows || []).filter((c) => c && c.MobileNumber);
     renderConvList();
     if (preserveSelection && activeMobile) loadThread(activeMobile, false);
   } catch (err) {
@@ -89,7 +89,9 @@ function renderThread(rows, forceScrollToBottom) {
   // yank someone away from history they're scrolled up reading.
   const wasNearBottom = forceScrollToBottom || (body.scrollHeight - body.scrollTop - body.clientHeight < 80);
   const timeFmt = new Intl.DateTimeFormat(I18N.lang === "ar" ? "ar-EG" : "en-US", { hour: "2-digit", minute: "2-digit" });
-  body.innerHTML = rows.map((r) => {
+  // Skip any blank/malformed rows (e.g. an empty row in the sheet) instead
+  // of letting them throw and abort the whole render.
+  body.innerHTML = rows.filter((r) => r && (r.Body || r.MediaUrl)).map((r) => {
     const isImage = r.MediaUrl && /\.(jpe?g|png|gif|webp)$/i.test(r.MediaUrl);
     const isDoc = r.MediaUrl && !isImage;
     const mediaHtml = isImage
