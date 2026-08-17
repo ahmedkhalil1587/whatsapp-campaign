@@ -104,7 +104,7 @@ function renderThread(rows, forceScrollToBottom) {
     // extra spaces for visual alignment on their own phone — those invisible
     // gaps still take up real width under white-space:pre-wrap), and trim
     // leading/trailing whitespace, so bubbles hug the actual visible text.
-    const cleanBody = (r.Body || "")
+    const cleanBody = String(r.Body ?? "")
       .replace(/\n{3,}/g, "\n\n")
       .split("\n").map((line) => line.replace(/[ \t]{2,}/g, " ").trim()).join("\n")
       .trim();
