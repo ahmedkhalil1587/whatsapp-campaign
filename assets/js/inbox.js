@@ -96,10 +96,15 @@ function renderThread(rows, forceScrollToBottom) {
       : isDoc
         ? `<a href="${escapeHtml(r.MediaUrl)}" target="_blank" class="d-flex align-items-center gap-2 mb-1"><i class="bi bi-file-earmark-fill"></i> <span class="text-decoration-underline">${I18N.t("inbox.attachment")}</span></a>`
         : "";
-    // Collapse 3+ consecutive newlines down to a single blank line, and trim
-    // leading/trailing whitespace, so bubbles hug the actual text instead of
-    // ballooning to fit stray blank lines from the source message.
-    const cleanBody = (r.Body || "").replace(/\n{3,}/g, "\n\n").trim();
+    // Collapse 3+ consecutive newlines down to a single blank line, collapse
+    // runs of 2+ spaces/tabs down to one (senders often pad messages with
+    // extra spaces for visual alignment on their own phone — those invisible
+    // gaps still take up real width under white-space:pre-wrap), and trim
+    // leading/trailing whitespace, so bubbles hug the actual visible text.
+    const cleanBody = (r.Body || "")
+      .replace(/\n{3,}/g, "\n\n")
+      .split("\n").map((line) => line.replace(/[ \t]{2,}/g, " ").trim()).join("\n")
+      .trim();
     return `
     <div class="msg-bubble ${r.Direction === "out" ? "out" : "in"}" dir="auto">
       ${mediaHtml}
