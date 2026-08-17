@@ -12,10 +12,29 @@ let allConversations = [];
 let activeMobile = null;
 let pollTimer = null;
 let pollInFlight = false; // guards against overlapping poll cycles hammering Apps Script
+let convFilter = "all"; // "all" | "unread" | "replied"
 
 function escapeHtml(str) {
   if (str === undefined || str === null) return "";
   return String(str).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+/** Grows the reply <textarea> to fit its content (up to the CSS max-height,
+ * after which it scrolls), then shrinks it back down when text is removed. */
+function autoResizeReplyInput(el) {
+  el.style.height = "auto";
+  el.style.height = `${el.scrollHeight}px`;
+}
+
+/** Called via onerror when a message's MediaUrl fails to load as an image
+ * (meaning it's actually a non-image attachment, e.g. a PDF) — swaps the
+ * broken <img> for a plain "attachment" link to the same URL instead. */
+function handleMediaError(imgEl) {
+  const wrap = imgEl.closest(".msg-media-wrap");
+  if (!wrap || wrap.dataset.fallenBack) return; // avoid loops if the link itself 404s
+  wrap.dataset.fallenBack = "1";
+  wrap.className = "d-flex align-items-center gap-2 mb-1";
+  wrap.innerHTML = `<i class="bi bi-file-earmark-fill"></i> <span class="text-decoration-underline">${I18N.t("inbox.attachment")}</span>`;
 }
 
 async function loadConversations(preserveSelection = true) {
@@ -40,9 +59,19 @@ async function loadConversations(preserveSelection = true) {
 function renderConvList() {
   const box = document.getElementById("convItems");
   const q = document.getElementById("convSearch").value.trim().toLowerCase();
-  const rows = allConversations.filter((c) => !q
-    || String(c.CustomerName || "").toLowerCase().includes(q)
-    || String(c.MobileNumber || "").includes(q));
+  // "Unread" here means the customer's message is the last one in the
+  // thread and nobody has replied yet — there's no separate read/unread
+  // flag in the sheet, but LastDirection already tells us exactly that.
+  const isUnread = (c) => c.LastDirection !== "out";
+  const rows = allConversations
+    .filter((c) => !q
+      || String(c.CustomerName || "").toLowerCase().includes(q)
+      || String(c.MobileNumber || "").includes(q))
+    .filter((c) => convFilter === "all" || (convFilter === "unread" ? isUnread(c) : !isUnread(c)));
+
+  const unreadCount = allConversations.filter(isUnread).length;
+  const unreadBtn = document.querySelector('.conv-filter-btn[data-filter="unread"]');
+  if (unreadBtn) unreadBtn.textContent = `${I18N.t("inbox.filterUnread")}${unreadCount ? ` (${unreadCount})` : ""}`;
 
   if (rows.length === 0) {
     box.innerHTML = `<div class="p-3 text-center text-secondary small">${I18N.t("inbox.empty")}</div>`;
@@ -50,9 +79,9 @@ function renderConvList() {
   }
   const dateFmt = new Intl.DateTimeFormat(I18N.lang === "ar" ? "ar-EG" : "en-US", { dateStyle: "short", timeStyle: "short" });
   box.innerHTML = rows.map((c) => `
-    <div class="conv-item ${c.MobileNumber === activeMobile ? "active" : ""}" data-mobile="${escapeHtml(c.MobileNumber)}">
+    <div class="conv-item ${c.MobileNumber === activeMobile ? "active" : ""} ${isUnread(c) ? "unread" : ""}" data-mobile="${escapeHtml(c.MobileNumber)}">
       <div class="d-flex justify-content-between align-items-center">
-        <span class="conv-name">${escapeHtml(c.CustomerName) || I18N.t("inbox.unknownCustomer")}</span>
+        <span class="conv-name">${escapeHtml(c.CustomerName) || I18N.t("inbox.unknownCustomer")}${isUnread(c) ? '<span class="conv-unread-dot"></span>' : ""}</span>
         <span class="conv-time">${c.LastTimestamp ? dateFmt.format(new Date(c.LastTimestamp)) : ""}</span>
       </div>
       <div class="conv-preview" dir="ltr">${escapeHtml(c.MobileNumber)}</div>
@@ -92,19 +121,23 @@ function renderThread(rows, forceScrollToBottom) {
   // Skip any blank/malformed rows (e.g. an empty row in the sheet) instead
   // of letting them throw and abort the whole render.
   body.innerHTML = rows.filter((r) => r && (r.Body || r.MediaUrl)).map((r) => {
-    const isImage = r.MediaUrl && /\.(jpe?g|png|gif|webp)$/i.test(r.MediaUrl);
-    const isDoc = r.MediaUrl && !isImage;
-    const mediaHtml = isImage
-      ? `<img src="${escapeHtml(r.MediaUrl)}" style="max-width:100%;border-radius:8px;margin-bottom:4px;display:block;">`
-      : isDoc
-        ? `<a href="${escapeHtml(r.MediaUrl)}" target="_blank" class="d-flex align-items-center gap-2 mb-1"><i class="bi bi-file-earmark-fill"></i> <span class="text-decoration-underline">${I18N.t("inbox.attachment")}</span></a>`
-        : "";
+    // We can't reliably tell "image vs. document" from the URL alone (e.g.
+    // Drive links like drive.google.com/uc?...id=... have no file
+    // extension), so always try rendering it as an image first; if the
+    // browser fails to load it as an image (onerror), swap it for a plain
+    // attachment link instead. See handleMediaError() below.
+    const mediaHtml = r.MediaUrl
+      ? `<a href="${escapeHtml(r.MediaUrl)}" target="_blank" class="msg-media-wrap"><img src="${escapeHtml(r.MediaUrl)}" alt="" style="max-width:260px;max-height:260px;border-radius:8px;margin-bottom:4px;display:block;object-fit:cover;" onerror="handleMediaError(this)"></a>`
+      : "";
     // Collapse 3+ consecutive newlines down to a single blank line, collapse
     // runs of 2+ spaces/tabs down to one (senders often pad messages with
     // extra spaces for visual alignment on their own phone — those invisible
     // gaps still take up real width under white-space:pre-wrap), and trim
     // leading/trailing whitespace, so bubbles hug the actual visible text.
-    const cleanBody = String(r.Body ?? "")
+    // "[image]" / "[document]" are internal placeholders (see backend) used
+    // when there's no real caption — don't show them as if they were text.
+    const rawBody = String(r.Body ?? "");
+    const cleanBody = /^\[(image|document|video|audio|sticker)\]$/i.test(rawBody.trim()) ? "" : rawBody
       .replace(/\n{3,}/g, "\n\n")
       .split("\n").map((line) => line.replace(/[ \t]{2,}/g, " ").trim()).join("\n")
       .trim();
@@ -126,6 +159,7 @@ async function sendReply() {
   try {
     await MCApi.Inbox.send(activeMobile, text);
     input.value = "";
+    autoResizeReplyInput(input);
     await loadThread(activeMobile, true);
     await loadConversations(true);
   } catch (err) {
@@ -167,11 +201,25 @@ document.addEventListener("DOMContentLoaded", () => {
   setTimeout(() => loadConversations(false), 60);
 
   document.getElementById("convSearch").addEventListener("input", renderConvList);
+  document.querySelectorAll(".conv-filter-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      convFilter = btn.getAttribute("data-filter");
+      document.querySelectorAll(".conv-filter-btn").forEach((b) => b.classList.toggle("active", b === btn));
+      renderConvList();
+    });
+  });
   document.getElementById("refreshBtn").addEventListener("click", () => loadConversations(true));
   document.getElementById("sendReplyBtn").addEventListener("click", sendReply);
-  document.getElementById("replyInput").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") sendReply();
+  const replyInputEl = document.getElementById("replyInput");
+  replyInputEl.addEventListener("keydown", (e) => {
+    // Enter sends the message; Shift+Enter inserts a real newline instead
+    // (default <textarea> behavior — just don't intercept it).
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendReply();
+    }
   });
+  replyInputEl.addEventListener("input", () => autoResizeReplyInput(replyInputEl));
   document.getElementById("attachBtn").addEventListener("click", () => document.getElementById("attachFileInput").click());
   document.getElementById("attachFileInput").addEventListener("change", (e) => {
     sendAttachment(e.target.files[0]);

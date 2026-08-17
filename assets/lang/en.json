@@ -328,7 +328,10 @@
     "sendError": "Could not send — the customer may be outside the 24-hour reply window.",
     "unknownCustomer": "Unknown customer",
     "attachment": "Attachment",
-    "refresh": "Refresh"
+    "refresh": "Refresh",
+    "filterAll": "All",
+    "filterUnread": "Awaiting reply",
+    "filterReplied": "Replied"
   },
   "signup": {
     "visualQuote": "Request an account and an admin will review it shortly.",

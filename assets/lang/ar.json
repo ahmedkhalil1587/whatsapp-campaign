@@ -328,7 +328,10 @@
     "sendError": "تعذّر الإرسال — يمكن العميل خارج نافذة الرد الـ 24 ساعة.",
     "unknownCustomer": "عميل غير معروف",
     "attachment": "مرفق",
-    "refresh": "تحديث"
+    "refresh": "تحديث",
+    "filterAll": "الكل",
+    "filterUnread": "لسه محتاج رد",
+    "filterReplied": "تم الرد"
   },
   "signup": {
     "visualQuote": "اطلب حساب وهيراجعه أدمن قريب.",
