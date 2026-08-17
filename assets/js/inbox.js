@@ -103,7 +103,7 @@ function renderThread(rows, forceScrollToBottom) {
     return `
     <div class="msg-bubble ${r.Direction === "out" ? "out" : "in"}" dir="auto">
       ${mediaHtml}
-      <span class="msg-text">${escapeHtml(cleanBody)}</span><span class="msg-time">${r.Timestamp ? timeFmt.format(new Date(r.Timestamp)) : ""}</span>
+      <span class="msg-text">${escapeHtml(cleanBody)}</span>&nbsp;<span class="msg-time">${r.Timestamp ? timeFmt.format(new Date(r.Timestamp)) : ""}</span>
     </div>`;
   }).join("");
   if (wasNearBottom) body.scrollTop = body.scrollHeight;
