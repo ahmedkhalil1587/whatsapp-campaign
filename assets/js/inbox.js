@@ -78,7 +78,7 @@ async function loadThread(mobile, scrollToBottom) {
     const res = await MCApi.Inbox.thread(mobile);
     renderThread(res.rows || [], scrollToBottom);
   } catch (err) {
-    MCApp.toast(I18N.t("common.error"), "error");
+    MCApp.toast(err.message || I18N.t("common.error"), "error");
   }
 }
 
