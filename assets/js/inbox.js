@@ -13,6 +13,7 @@ let activeMobile = null;
 let pollTimer = null;
 let pollInFlight = false; // guards against overlapping poll cycles hammering Apps Script
 let convFilter = "all"; // "all" | "unread" | "replied"
+let threadCache = {}; // mobile -> last-known rows[], so re-opening a chat is instant (stale-while-revalidate)
 
 function escapeHtml(str) {
   if (str === undefined || str === null) return "";
@@ -103,11 +104,22 @@ async function loadThread(mobile, scrollToBottom) {
   document.getElementById("threadName").textContent = (conv && conv.CustomerName) || I18N.t("inbox.unknownCustomer");
   document.getElementById("threadMobile").textContent = mobile;
 
+  // Stale-while-revalidate: if we already have this thread cached from a
+  // previous visit, paint it immediately (feels instant) while we fetch the
+  // real up-to-date version in the background and swap it in once it lands.
+  const cached = threadCache[mobile];
+  if (cached) renderThread(cached, true);
+  else {
+    document.getElementById("threadBody").innerHTML = `<div class="text-center text-secondary small py-3">${I18N.t("common.loading") || "…"}</div>`;
+  }
+
   try {
     const res = await MCApi.Inbox.thread(mobile);
-    renderThread(res.rows || [], scrollToBottom);
+    if (mobile !== activeMobile) return; // user already switched to another chat — drop this stale response
+    threadCache[mobile] = res.rows || [];
+    renderThread(res.rows || [], scrollToBottom || !cached);
   } catch (err) {
-    MCApp.toast(err.message || I18N.t("common.error"), "error");
+    if (!cached) MCApp.toast(err.message || I18N.t("common.error"), "error");
   }
 }
 
@@ -142,9 +154,9 @@ function renderThread(rows, forceScrollToBottom) {
       .split("\n").map((line) => line.replace(/[ \t]{2,}/g, " ").trim()).join("\n")
       .trim();
     return `
-    <div class="msg-bubble ${r.Direction === "out" ? "out" : "in"}" dir="auto">
+    <div class="msg-bubble ${r.Direction === "out" ? "out" : "in"} ${r._pending ? "pending" : ""}" dir="auto">
       ${mediaHtml}
-      <span class="msg-text">${escapeHtml(cleanBody)}</span>&nbsp;<span class="msg-time">${r.Timestamp ? timeFmt.format(new Date(r.Timestamp)) : ""}</span>
+      <span class="msg-text">${escapeHtml(cleanBody)}</span>&nbsp;<span class="msg-time">${r._pending ? "…" : (r.Timestamp ? timeFmt.format(new Date(r.Timestamp)) : "")}</span>
     </div>`;
   }).join("");
   if (wasNearBottom) body.scrollTop = body.scrollHeight;
@@ -154,18 +166,30 @@ async function sendReply() {
   const input = document.getElementById("replyInput");
   const text = input.value.trim();
   if (!text || !activeMobile) return;
-  const btn = document.getElementById("sendReplyBtn");
-  btn.disabled = true;
+  const mobile = activeMobile;
+
+  // Optimistic send: paint the message immediately and clear the box right
+  // away instead of waiting on the (often slow) Apps Script round trip —
+  // we reconcile with the real server copy in the background afterwards.
+  input.value = "";
+  autoResizeReplyInput(input);
+  const optimisticRow = { Direction: "out", Body: text, Timestamp: new Date().toISOString(), _pending: true };
+  threadCache[mobile] = [...(threadCache[mobile] || []), optimisticRow];
+  if (mobile === activeMobile) renderThread(threadCache[mobile], true);
+  // Reflect it in the conversation list preview immediately too.
+  const conv = allConversations.find((c) => c.MobileNumber === mobile);
+  if (conv) { conv.LastMessage = text; conv.LastDirection = "out"; conv.LastTimestamp = optimisticRow.Timestamp; renderConvList(); }
+
   try {
-    await MCApi.Inbox.send(activeMobile, text);
-    input.value = "";
-    autoResizeReplyInput(input);
-    await loadThread(activeMobile, true);
-    await loadConversations(true);
+    await MCApi.Inbox.send(mobile, text);
+    // Fire-and-forget background reconcile — don't block the UI on it.
+    loadThread(mobile, false);
+    loadConversations(true);
   } catch (err) {
-    MCApp.toast(I18N.t("inbox.sendError"), "error");
-  } finally {
-    btn.disabled = false;
+    // Roll back the optimistic bubble and let the person know it didn't go.
+    threadCache[mobile] = (threadCache[mobile] || []).filter((r) => r !== optimisticRow);
+    if (mobile === activeMobile) renderThread(threadCache[mobile], false);
+    MCApp.toast(err.message || I18N.t("inbox.sendError"), "error");
   }
 }
 
