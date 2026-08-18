@@ -330,8 +330,10 @@
     "attachment": "مرفق",
     "refresh": "تحديث",
     "filterAll": "الكل",
-    "filterUnread": "لسه محتاج رد",
-    "filterReplied": "تم الرد"
+    "filterUnread": "غير مقروءة",
+    "filterReplied": "مقروءة",
+    "filterRead": "مقروءة",
+    "markRead": "علّم كمقروءة"
   },
   "signup": {
     "visualQuote": "اطلب حساب وهيراجعه أدمن قريب.",

@@ -25,6 +25,7 @@
   .conv-unread-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--mc-primary); margin-inline-start: 6px; flex-shrink: 0; }
   .conv-filter-bar .btn { font-size: .74rem; padding: 4px 6px; }
   .conv-filter-bar .btn.active { background: var(--mc-primary); border-color: var(--mc-primary); color: #fff; }
+  .conv-mark-read-btn { flex-shrink: 0; }
   .thread-pane { flex: 1; display: flex; flex-direction: column; background: #E5DDD5; }
   [data-theme="dark"] .thread-pane { background: #0c1b21; }
   .thread-header { background: var(--mc-surface); padding: 12px 16px; border-bottom: 1px solid var(--mc-border); font-weight: 700; display: flex; align-items: center; gap: 10px; }
@@ -121,8 +122,8 @@
           </div>
           <div class="conv-filter-bar btn-group btn-group-sm w-100 px-2 pb-2" role="group">
             <button type="button" class="btn btn-outline-secondary conv-filter-btn active" data-filter="all" data-i18n="inbox.filterAll">All</button>
-            <button type="button" class="btn btn-outline-secondary conv-filter-btn" data-filter="unread" data-i18n="inbox.filterUnread">Awaiting reply</button>
-            <button type="button" class="btn btn-outline-secondary conv-filter-btn" data-filter="replied" data-i18n="inbox.filterReplied">Replied</button>
+            <button type="button" class="btn btn-outline-secondary conv-filter-btn" data-filter="unread" data-i18n="inbox.filterUnread">Unread</button>
+            <button type="button" class="btn btn-outline-secondary conv-filter-btn" data-filter="replied" data-i18n="inbox.filterRead">Read</button>
           </div>
           <div id="convItems"></div>
         </div>
@@ -153,7 +154,7 @@
 <script src="assets/js/app.js"></script>
 <script src="assets/js/api.js"></script>
 <script src="assets/js/auth.js"></script>
-<script src="assets/js/inbox.js?v=8"></script>
+<script src="assets/js/inbox.js?v=9"></script>
 <script>
   MCAuth.guard();
   const session = MCAuth.getSession();

@@ -330,8 +330,10 @@
     "attachment": "Attachment",
     "refresh": "Refresh",
     "filterAll": "All",
-    "filterUnread": "Awaiting reply",
-    "filterReplied": "Replied"
+    "filterUnread": "Unread",
+    "filterReplied": "Read",
+    "filterRead": "Read",
+    "markRead": "Mark as read"
   },
   "signup": {
     "visualQuote": "Request an account and an admin will review it shortly.",

@@ -15,6 +15,32 @@ let pollInFlight = false; // guards against overlapping poll cycles hammering Ap
 let convFilter = "all"; // "all" | "unread" | "replied"
 let threadCache = {}; // mobile -> last-known rows[], so re-opening a chat is instant (stale-while-revalidate)
 
+// --- Read/unread tracking -------------------------------------------------
+// There's no "read" column in the sheet, so we track it locally (per
+// device) in localStorage: mobile -> ISO timestamp of the last message we
+// know the admin has seen. A conversation is "unread" whenever its latest
+// message is newer than that stored timestamp — so it automatically flips
+// back to unread if the customer sends something new later, with no extra
+// bookkeeping needed.
+const READ_STATE_KEY = "mc_inbox_read_state";
+function getReadState() {
+  try { return JSON.parse(localStorage.getItem(READ_STATE_KEY) || "{}"); } catch { return {}; }
+}
+function markRead(mobile, timestamp) {
+  const state = getReadState();
+  state[mobile] = timestamp || new Date().toISOString();
+  localStorage.setItem(READ_STATE_KEY, JSON.stringify(state));
+}
+function isConvUnread(c) {
+  if (!c.LastTimestamp) return false;
+  const readAt = getReadState()[c.MobileNumber];
+  if (!readAt) return true;
+  const last = new Date(c.LastTimestamp).getTime();
+  const read = new Date(readAt).getTime();
+  if (isNaN(last) || isNaN(read)) return true;
+  return last > read;
+}
+
 function escapeHtml(str) {
   if (str === undefined || str === null) return "";
   return String(str).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -60,17 +86,13 @@ async function loadConversations(preserveSelection = true) {
 function renderConvList() {
   const box = document.getElementById("convItems");
   const q = document.getElementById("convSearch").value.trim().toLowerCase();
-  // "Unread" here means the customer's message is the last one in the
-  // thread and nobody has replied yet — there's no separate read/unread
-  // flag in the sheet, but LastDirection already tells us exactly that.
-  const isUnread = (c) => c.LastDirection !== "out";
   const rows = allConversations
     .filter((c) => !q
       || String(c.CustomerName || "").toLowerCase().includes(q)
       || String(c.MobileNumber || "").includes(q))
-    .filter((c) => convFilter === "all" || (convFilter === "unread" ? isUnread(c) : !isUnread(c)));
+    .filter((c) => convFilter === "all" || (convFilter === "unread" ? isConvUnread(c) : !isConvUnread(c)));
 
-  const unreadCount = allConversations.filter(isUnread).length;
+  const unreadCount = allConversations.filter(isConvUnread).length;
   const unreadBtn = document.querySelector('.conv-filter-btn[data-filter="unread"]');
   if (unreadBtn) unreadBtn.textContent = `${I18N.t("inbox.filterUnread")}${unreadCount ? ` (${unreadCount})` : ""}`;
 
@@ -79,28 +101,53 @@ function renderConvList() {
     return;
   }
   const dateFmt = new Intl.DateTimeFormat(I18N.lang === "ar" ? "ar-EG" : "en-US", { dateStyle: "short", timeStyle: "short" });
-  box.innerHTML = rows.map((c) => `
-    <div class="conv-item ${c.MobileNumber === activeMobile ? "active" : ""} ${isUnread(c) ? "unread" : ""}" data-mobile="${escapeHtml(c.MobileNumber)}">
+  box.innerHTML = rows.map((c) => {
+    const unread = isConvUnread(c);
+    return `
+    <div class="conv-item ${c.MobileNumber === activeMobile ? "active" : ""} ${unread ? "unread" : ""}" data-mobile="${escapeHtml(c.MobileNumber)}">
       <div class="d-flex justify-content-between align-items-center">
-        <span class="conv-name">${escapeHtml(c.CustomerName) || I18N.t("inbox.unknownCustomer")}${isUnread(c) ? '<span class="conv-unread-dot"></span>' : ""}</span>
+        <span class="conv-name">${escapeHtml(c.CustomerName) || I18N.t("inbox.unknownCustomer")}${unread ? '<span class="conv-unread-dot"></span>' : ""}</span>
         <span class="conv-time">${c.LastTimestamp ? dateFmt.format(new Date(c.LastTimestamp)) : ""}</span>
       </div>
-      <div class="conv-preview" dir="ltr">${escapeHtml(c.MobileNumber)}</div>
-      <div class="conv-preview">${c.LastDirection === "out" ? "↩ " : ""}${escapeHtml(c.LastMessage)}</div>
-    </div>`).join("");
+      <div class="d-flex justify-content-between align-items-end">
+        <div>
+          <div class="conv-preview" dir="ltr">${escapeHtml(c.MobileNumber)}</div>
+          <div class="conv-preview">${c.LastDirection === "out" ? "↩ " : ""}${escapeHtml(c.LastMessage)}</div>
+        </div>
+        ${unread ? `<button type="button" class="btn btn-sm btn-light conv-mark-read-btn" data-mobile="${escapeHtml(c.MobileNumber)}" title="${I18N.t("inbox.markRead")}"><i class="bi bi-check2"></i></button>` : ""}
+      </div>
+    </div>`;
+  }).join("");
 
   box.querySelectorAll(".conv-item").forEach((el) => {
-    el.addEventListener("click", () => loadThread(el.getAttribute("data-mobile"), true));
+    el.addEventListener("click", (e) => {
+      if (e.target.closest(".conv-mark-read-btn")) return; // handled separately below
+      loadThread(el.getAttribute("data-mobile"), true);
+    });
+  });
+  // "Mark as read" without opening the thread — for messages that don't
+  // need a reply (a thank-you, an emoji reaction, etc).
+  box.querySelectorAll(".conv-mark-read-btn").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const mobile = btn.getAttribute("data-mobile");
+      const conv = allConversations.find((c) => c.MobileNumber === mobile);
+      markRead(mobile, conv && conv.LastTimestamp);
+      renderConvList();
+    });
   });
 }
 
 async function loadThread(mobile, scrollToBottom) {
   activeMobile = mobile;
+  // Mark it read the moment it's opened — that's the point of opening it.
+  const openedConv = allConversations.find((c) => c.MobileNumber === mobile);
+  markRead(mobile, openedConv && openedConv.LastTimestamp);
   renderConvList();
   document.getElementById("emptyPane").classList.add("d-none");
   document.getElementById("activeThread").classList.remove("d-none");
 
-  const conv = allConversations.find((c) => c.MobileNumber === mobile);
+  const conv = openedConv;
   document.getElementById("threadName").textContent = (conv && conv.CustomerName) || I18N.t("inbox.unknownCustomer");
   document.getElementById("threadMobile").textContent = mobile;
 
@@ -118,6 +165,10 @@ async function loadThread(mobile, scrollToBottom) {
     if (mobile !== activeMobile) return; // user already switched to another chat — drop this stale response
     threadCache[mobile] = res.rows || [];
     renderThread(res.rows || [], scrollToBottom || !cached);
+    // The background refresh may have revealed an even newer last message
+    // than what we knew when we first marked this read — catch up again.
+    const freshConv = allConversations.find((c) => c.MobileNumber === mobile);
+    if (freshConv) markRead(mobile, freshConv.LastTimestamp);
   } catch (err) {
     if (!cached) MCApp.toast(err.message || I18N.t("common.error"), "error");
   }
@@ -178,7 +229,7 @@ async function sendReply() {
   if (mobile === activeMobile) renderThread(threadCache[mobile], true);
   // Reflect it in the conversation list preview immediately too.
   const conv = allConversations.find((c) => c.MobileNumber === mobile);
-  if (conv) { conv.LastMessage = text; conv.LastDirection = "out"; conv.LastTimestamp = optimisticRow.Timestamp; renderConvList(); }
+  if (conv) { conv.LastMessage = text; conv.LastDirection = "out"; conv.LastTimestamp = optimisticRow.Timestamp; markRead(mobile, optimisticRow.Timestamp); renderConvList(); }
 
   try {
     await MCApi.Inbox.send(mobile, text);
