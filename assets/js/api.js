@@ -12,7 +12,7 @@
 const MCApi = (() => {
   const URL_KEY = "mc_gas_url";
   // Deployed Apps Script Web App exec URL — update this after every new deployment.
-  const DEFAULT_GAS_URL = "https://script.google.com/macros/s/AKfycbyGawYVt-zuRqO_5bQMU-ieeKVyRZGAEZCrc8t8q60JLYaJCzW1bAAKD1toCGBSdquT/exec";
+  const DEFAULT_GAS_URL = "https://script.google.com/macros/s/AKfycbxuCFiZtoBnfHL09SKh4Kbfw3JM6wZZ5CKpYc5ntCi0O1BhWHimReqHDsyxMbOdnQor8w/exec";
 
   function getBaseUrl() {
     return localStorage.getItem(URL_KEY) || DEFAULT_GAS_URL;
