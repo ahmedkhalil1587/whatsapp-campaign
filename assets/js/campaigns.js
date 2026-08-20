@@ -21,6 +21,17 @@ function escapeHtml(str) {
   return String(str).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+/** Strips everything except digits, so "+966 54 508 4980", "00966545084980",
+ * and "966545084980" are all recognized as the same person's number when
+ * matching an uploaded Excel list against the existing customer list. */
+function normalizeMobile(mobile) {
+  var digits = String(mobile || "").replace(/[^0-9]/g, "");
+  // "00" is the international dialing prefix some people use instead of
+  // "+" (e.g. "00966545084980" vs "+966545084980") — treat them the same.
+  if (digits.slice(0, 2) === "00") digits = digits.slice(2);
+  return digits;
+}
+
 // ---------------------------------------------------------------
 // List view
 // ---------------------------------------------------------------
@@ -360,10 +371,15 @@ async function handleRecipientListUpload(file) {
 
     if (mapped.length === 0) throw new Error("empty");
 
-    // Match against the customers we already have (by mobile number).
-    const existingByMobile = new Map(allCustomers.map((d) => [String(d.Mobile).trim(), d]));
-    const toCreate = mapped.filter((r) => !existingByMobile.has(r.Mobile));
-    const matchedIds = mapped.filter((r) => existingByMobile.has(r.Mobile)).map((r) => String(existingByMobile.get(r.Mobile).ID));
+    // Match against the customers we already have. Compare digits only
+    // (strip "+", spaces, dashes, etc.) instead of the raw string — the
+    // same person can appear as "+966545084980" in one place and
+    // "966545084980" or "00966545084980" in another, and a strict string
+    // match would treat those as different people and leave the existing
+    // one unchecked while creating a duplicate for the "new" one.
+    const existingByMobile = new Map(allCustomers.map((d) => [normalizeMobile(d.Mobile), d]));
+    const toCreate = mapped.filter((r) => !existingByMobile.has(normalizeMobile(r.Mobile)));
+    const matchedIds = mapped.filter((r) => existingByMobile.has(normalizeMobile(r.Mobile))).map((r) => String(existingByMobile.get(normalizeMobile(r.Mobile)).ID));
 
     if (toCreate.length > 0) {
       await MCApi.Doctors.bulkImport(toCreate);
@@ -372,9 +388,9 @@ async function handleRecipientListUpload(file) {
     // Reload the customer list so newly-created rows get real IDs, then match again.
     const res = await MCApi.Doctors.list();
     allCustomers = res.rows || [];
-    const refreshedByMobile = new Map(allCustomers.map((d) => [String(d.Mobile).trim(), d]));
+    const refreshedByMobile = new Map(allCustomers.map((d) => [normalizeMobile(d.Mobile), d]));
     const allIds = mapped
-      .map((r) => refreshedByMobile.get(r.Mobile))
+      .map((r) => refreshedByMobile.get(normalizeMobile(r.Mobile)))
       .filter(Boolean)
       .map((d) => String(d.ID));
 
