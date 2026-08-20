@@ -9,7 +9,8 @@
  *   Campaigns  : ID | Name | Message | ImageUrl | PdfUrl | Status | ScheduledAt | CreatedAt | Sent | Delivered | Read | Failed | RecipientIds | MessageType | TemplateName | TemplateLanguage | TemplateParams | TemplateParamNames
  *   Templates  : ID | Name | Body
  *   Logs       : Timestamp | CampaignID | DoctorID | MobileNumber | WaMessageId | Status
- *   Inbox      : Timestamp | MobileNumber | CustomerID | Direction | Body | MediaUrl | WaMessageId | Status
+ *   Inbox      : Timestamp | MobileNumber | CustomerID | Direction | Body | MediaUrl | WaMessageId | Status | AgentUsername
+ *   InboxReadState : MobileNumber | LastReadTimestamp | LastReadBy
  *   Signups    : ID | Timestamp | Name | Email | PasswordHash | Status | VerificationCode | Role
  *   Users      : Username | Password | Name | Role
  *
@@ -84,7 +85,7 @@ function handleRequest_(e) {
 // not just hidden in the UI.
 
 var PUBLIC_ACTIONS_ = ["auth.login", "auth.register", "auth.verify"];
-var AGENT_ALLOWED_ACTIONS_ = ["doctors.list", "doctors.create", "doctors.update", "doctors.delete", "doctors.bulkImport", "inbox.list", "inbox.thread", "inbox.send", "inbox.sendMedia", "media.upload"];
+var AGENT_ALLOWED_ACTIONS_ = ["doctors.list", "doctors.create", "doctors.update", "doctors.delete", "doctors.bulkImport", "inbox.list", "inbox.thread", "inbox.send", "inbox.sendMedia", "inbox.markRead", "media.upload"];
 var SESSION_TTL_SECONDS_ = 21600; // 6 hours; slides forward on each authorized request
 
 function generateToken_(username, role) {
@@ -103,8 +104,9 @@ function validateToken_(token) {
 }
 
 function routeAction_(action, body) {
+  var session = null;
   if (PUBLIC_ACTIONS_.indexOf(action) === -1) {
-    var session = validateToken_(body.token);
+    session = validateToken_(body.token);
     if (!session) return { ok: false, error: "Session expired. Please log in again." };
     if (session.role !== "admin" && AGENT_ALLOWED_ACTIONS_.indexOf(action) === -1) {
       return { ok: false, error: "You don't have permission for this action." };
@@ -147,8 +149,9 @@ function routeAction_(action, body) {
 
     case "inbox.list":        return { ok: true, rows: buildInboxConversations_() };
     case "inbox.thread":      return { ok: true, rows: sheetToObjects_("Inbox").filter(function (r) { return String(r.MobileNumber).trim() === String(body.mobile).trim(); }).sort(function (a, b) { return new Date(a.Timestamp) - new Date(b.Timestamp); }) };
-    case "inbox.send":        return sendInboxReply_(body.mobile, body.text);
-    case "inbox.sendMedia":    return sendInboxMedia_(body.mobile, body.mediaUrl, body.mediaType, body.caption, body.filename);
+    case "inbox.send":        return sendInboxReply_(body.mobile, body.text, session.username);
+    case "inbox.sendMedia":    return sendInboxMedia_(body.mobile, body.mediaUrl, body.mediaType, body.caption, body.filename, session.username);
+    case "inbox.markRead":    return { ok: true, readAt: markConversationRead_(body.mobile, body.timestamp, session.username) };
 
     case "settings.get":      return { ok: true, settings: getPublicSettings_() };
     case "settings.save":     return { ok: true, settings: saveSettings_(body.settings) };
@@ -807,8 +810,23 @@ function handleWebhookMessages_(messages, contacts) {
   messages.forEach(function (m) {
     var mobile = String(m.from || "").trim();
     var body = "";
-    if (m.type === "text" && m.text) body = m.text.body;
-    else if (m.type) body = "[" + m.type + "]"; // image/audio/document/etc — no text body to show
+    var mediaUrl = "";
+    if (m.type === "text" && m.text) {
+      body = m.text.body;
+    } else if (m.type) {
+      body = "[" + m.type + "]"; // fallback if there's no caption and/or the media couldn't be fetched
+      var mediaObj = m[m.type]; // e.g. m.image, m.document, m.audio, m.video, m.sticker — all share {id, mime_type, ...}
+      if (mediaObj && mediaObj.id) {
+        try {
+          mediaUrl = fetchAndStoreIncomingMedia_(mediaObj.id, mediaObj.mime_type);
+        } catch (err) {
+          // Don't let a media-download hiccup (expired link, quota, etc.)
+          // stop the message from being logged at all — it just won't
+          // have a previewable attachment this one time.
+        }
+        if (mediaObj.caption) body = mediaObj.caption;
+      }
+    }
     var doctor = doctorByMobile[normalizeMobile_(mobile)];
 
     appendRow_("Inbox", {
@@ -816,10 +834,60 @@ function handleWebhookMessages_(messages, contacts) {
       MobileNumber: mobile,
       CustomerID: doctor ? doctor.ID : "",
       Body: body,
+      MediaUrl: mediaUrl,
       WaMessageId: m.id || "",
       Status: "received",
     });
   });
+}
+
+/** Common WhatsApp media MIME types → a sane file extension for the saved Drive file. */
+var MEDIA_EXT_BY_MIME_ = {
+  "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif",
+  "video/mp4": "mp4", "video/3gpp": "3gp",
+  "audio/ogg": "ogg", "audio/mpeg": "mp3", "audio/mp4": "m4a", "audio/amr": "amr",
+  "application/pdf": "pdf",
+};
+
+/**
+ * Downloads a customer-sent attachment from WhatsApp (Meta only gives you a
+ * short-lived media ID in the webhook payload, not a direct URL — you have
+ * to look up a real download link with your access token, then fetch the
+ * bytes with that same token) and re-hosts it on Drive, mirroring
+ * uploadMedia_()'s pattern for outgoing files, so the browser can just
+ * <img src="..."> it without needing any WhatsApp auth of its own.
+ * Returns the Drive URL, or "" if credentials aren't configured or the
+ * download failed for any reason.
+ */
+function fetchAndStoreIncomingMedia_(mediaId, mimeType) {
+  var props = PropertiesService.getScriptProperties();
+  var accessToken = props.getProperty("WA_ACCESS_TOKEN");
+  if (!accessToken) return "";
+
+  // Step 1: media ID → a temporary authenticated download URL.
+  var metaResp = UrlFetchApp.fetch("https://graph.facebook.com/v20.0/" + mediaId, {
+    method: "get",
+    headers: { Authorization: "Bearer " + accessToken },
+    muteHttpExceptions: true,
+  });
+  var meta = JSON.parse(metaResp.getContentText() || "{}");
+  if (!meta.url) return "";
+
+  // Step 2: fetch the actual bytes from that URL (still needs the same auth header).
+  var fileResp = UrlFetchApp.fetch(meta.url, {
+    method: "get",
+    headers: { Authorization: "Bearer " + accessToken },
+    muteHttpExceptions: true,
+  });
+  if (fileResp.getResponseCode() !== 200) return "";
+
+  var ext = MEDIA_EXT_BY_MIME_[mimeType || meta.mime_type] || "";
+  var filename = mediaId + (ext ? "." + ext : "");
+  var folder = getOrCreateMediaFolder_();
+  var blob = fileResp.getBlob().setName(filename);
+  var file = folder.createFile(blob);
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  return "https://drive.google.com/uc?export=download&id=" + file.getId();
 }
 
 /** Returns one row per conversation (most recent message per mobile number), newest first. */
@@ -828,6 +896,7 @@ function buildInboxConversations_() {
   var doctors = sheetToObjects_("Doctors");
   var doctorByMobile = {};
   doctors.forEach(function (d) { doctorByMobile[normalizeMobile_(d.Mobile)] = d; });
+  var readByMobile = getReadStateMap_();
 
   var byMobile = {};
   rows.forEach(function (r) {
@@ -840,18 +909,69 @@ function buildInboxConversations_() {
   return Object.keys(byMobile).map(function (mobile) {
     var last = byMobile[mobile];
     var doctor = doctorByMobile[normalizeMobile_(mobile)];
+    var readState = readByMobile[mobile];
     return {
       MobileNumber: mobile,
       CustomerName: doctor ? doctor.Name : "",
       LastMessage: last.Body,
       LastDirection: last.Direction,
       LastTimestamp: last.Timestamp,
+      // Shared across every device/agent (stored in the InboxReadState
+      // sheet) — the client just compares this to LastTimestamp instead
+      // of keeping its own per-browser read/unread flag.
+      LastReadTimestamp: readState ? readState.LastReadTimestamp : "",
+      LastReadBy: readState ? readState.LastReadBy : "",
     };
   }).sort(function (a, b) { return new Date(b.LastTimestamp) - new Date(a.LastTimestamp); });
 }
 
+// ---------------------------------------------------------------
+// Inbox read state — shared across devices/agents (see InboxReadState
+// sheet: MobileNumber | LastReadTimestamp | LastReadBy). There's one row
+// per conversation, upserted every time someone opens/reads a thread, so
+// "read" status is consistent no matter who's looking or from where.
+// ---------------------------------------------------------------
+
+function getReadStateMap_() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("InboxReadState");
+  if (!sheet) return {}; // sheet not created yet — treat everything as unread rather than erroring
+  var rows = sheetToObjects_("InboxReadState");
+  var map = {};
+  rows.forEach(function (r) { map[String(r.MobileNumber).trim()] = r; });
+  return map;
+}
+
+/** Upserts the read cursor for a conversation. Returns the timestamp that was stored. */
+function markConversationRead_(mobile, timestamp, username) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("InboxReadState");
+  if (!sheet) return ""; // sheet not set up — silently no-op instead of throwing on every message open
+  var readAt = timestamp || new Date().toISOString();
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var mobileCol = headers.indexOf("MobileNumber");
+  var values = sheet.getDataRange().getValues();
+  for (var i = 1; i < values.length; i++) {
+    if (String(values[i][mobileCol]).trim() === String(mobile).trim()) {
+      var row = headers.map(function (h) {
+        if (h === "MobileNumber") return mobile;
+        if (h === "LastReadTimestamp") return readAt;
+        if (h === "LastReadBy") return username || "";
+        return values[i][headers.indexOf(h)];
+      });
+      sheet.getRange(i + 1, 1, 1, headers.length).setValues([row]);
+      return readAt;
+    }
+  }
+  sheet.appendRow(headers.map(function (h) {
+    if (h === "MobileNumber") return mobile;
+    if (h === "LastReadTimestamp") return readAt;
+    if (h === "LastReadBy") return username || "";
+    return "";
+  }));
+  return readAt;
+}
+
 /** Sends an image or document attachment to a customer from the Inbox chat, and logs it. */
-function sendInboxMedia_(mobile, mediaUrl, mediaType, caption, filename) {
+function sendInboxMedia_(mobile, mediaUrl, mediaType, caption, filename, agentUsername) {
   var payload = {
     messaging_product: "whatsapp",
     to: mobile,
@@ -875,12 +995,14 @@ function sendInboxMedia_(mobile, mediaUrl, mediaType, caption, filename) {
     MediaUrl: mediaUrl,
     WaMessageId: waMessageId || "",
     Status: "sent",
+    AgentUsername: agentUsername || "",
   });
+  markConversationRead_(mobile, new Date().toISOString(), agentUsername); // replying implies you've seen it
   return { ok: true };
 }
 
 /** Sends a free-form reply to a customer (only deliverable within their 24h window) and logs it to Inbox. */
-function sendInboxReply_(mobile, body) {
+function sendInboxReply_(mobile, body, agentUsername) {
   var waMessageId = sendWhatsAppMessage_(mobile, body, null);
   var doctors = sheetToObjects_("Doctors");
   var doctor = doctors.find(function (d) { return normalizeMobile_(d.Mobile) === normalizeMobile_(mobile); });
@@ -892,9 +1014,12 @@ function sendInboxReply_(mobile, body) {
     Body: body,
     WaMessageId: waMessageId || "",
     Status: "sent",
+    AgentUsername: agentUsername || "",
   });
+  markConversationRead_(mobile, new Date().toISOString(), agentUsername); // replying implies you've seen it
   return { ok: true };
 }
+
 
 /**
  * Plain wrapper with no trailing underscore, so it always shows up in the
@@ -903,4 +1028,8 @@ function sendInboxReply_(mobile, body) {
  */
 function runScheduleSetup() {
   setupScheduleTrigger_();
+}
+
+function testEmailAuth() {
+  MailApp.sendEmail(Session.getActiveUser().getEmail(), "اختبار صلاحية الإيميل", "لو وصلتك الرسالة دي، الصلاحية اتفعلت صح.");
 }

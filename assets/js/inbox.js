@@ -16,29 +16,29 @@ let convFilter = "all"; // "all" | "unread" | "replied"
 let threadCache = {}; // mobile -> last-known rows[], so re-opening a chat is instant (stale-while-revalidate)
 
 // --- Read/unread tracking -------------------------------------------------
-// There's no "read" column in the sheet, so we track it locally (per
-// device) in localStorage: mobile -> ISO timestamp of the last message we
-// know the admin has seen. A conversation is "unread" whenever its latest
-// message is newer than that stored timestamp — so it automatically flips
-// back to unread if the customer sends something new later, with no extra
-// bookkeeping needed.
-const READ_STATE_KEY = "mc_inbox_read_state";
-function getReadState() {
-  try { return JSON.parse(localStorage.getItem(READ_STATE_KEY) || "{}"); } catch { return {}; }
-}
-function markRead(mobile, timestamp) {
-  const state = getReadState();
-  state[mobile] = timestamp || new Date().toISOString();
-  localStorage.setItem(READ_STATE_KEY, JSON.stringify(state));
-}
+// Shared across every device and agent — the backend keeps one row per
+// conversation in the InboxReadState sheet (see Code.gs) and returns
+// LastReadTimestamp/LastReadBy on every conversation. A conversation is
+// "unread" whenever its latest message is newer than that read cursor.
 function isConvUnread(c) {
   if (!c.LastTimestamp) return false;
-  const readAt = getReadState()[c.MobileNumber];
-  if (!readAt) return true;
+  if (!c.LastReadTimestamp) return true;
   const last = new Date(c.LastTimestamp).getTime();
-  const read = new Date(readAt).getTime();
+  const read = new Date(c.LastReadTimestamp).getTime();
   if (isNaN(last) || isNaN(read)) return true;
   return last > read;
+}
+/** Tells the backend this conversation has been seen, and updates our
+ * local copy immediately so the UI reflects it without waiting on a
+ * round trip. Fire-and-forget — a failed markRead call isn't worth
+ * blocking or alarming the user over. */
+function markRead(mobile, timestamp) {
+  const conv = allConversations.find((c) => c.MobileNumber === mobile);
+  const readAt = timestamp || new Date().toISOString();
+  if (conv) conv.LastReadTimestamp = readAt;
+  if (MCApi.isConfigured()) {
+    MCApi.Inbox.markRead(mobile, readAt).catch(() => {});
+  }
 }
 
 function escapeHtml(str) {
@@ -206,6 +206,7 @@ function renderThread(rows, forceScrollToBottom) {
       .trim();
     return `
     <div class="msg-bubble ${r.Direction === "out" ? "out" : "in"} ${r._pending ? "pending" : ""}" dir="auto">
+      ${r.Direction === "out" && r.AgentUsername ? `<div class="msg-agent-label">${escapeHtml(r.AgentUsername)}</div>` : ""}
       ${mediaHtml}
       <span class="msg-text">${escapeHtml(cleanBody)}</span>&nbsp;<span class="msg-time">${r._pending ? "…" : (r.Timestamp ? timeFmt.format(new Date(r.Timestamp)) : "")}</span>
     </div>`;
@@ -224,7 +225,8 @@ async function sendReply() {
   // we reconcile with the real server copy in the background afterwards.
   input.value = "";
   autoResizeReplyInput(input);
-  const optimisticRow = { Direction: "out", Body: text, Timestamp: new Date().toISOString(), _pending: true };
+  const currentUsername = (typeof MCAuth !== "undefined" && MCAuth.getSession && MCAuth.getSession()) ? MCAuth.getSession().username : "";
+  const optimisticRow = { Direction: "out", Body: text, Timestamp: new Date().toISOString(), AgentUsername: currentUsername, _pending: true };
   threadCache[mobile] = [...(threadCache[mobile] || []), optimisticRow];
   if (mobile === activeMobile) renderThread(threadCache[mobile], true);
   // Reflect it in the conversation list preview immediately too.

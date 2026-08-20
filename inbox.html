@@ -36,6 +36,7 @@
   .msg-bubble.out { align-self: flex-end; background: #DCF8C6; color: #111; border-start-end-radius: 2px; }
   .msg-bubble .msg-time { font-size: .65rem; color: #667781; white-space: nowrap; margin-inline-start: 6px; }
   .msg-bubble.pending { opacity: .65; }
+  .msg-agent-label { font-size: .68rem; font-weight: 700; color: var(--mc-primary); margin-bottom: 2px; }
   .thread-input { border-top: 1px solid var(--mc-border); background: var(--mc-surface); padding: 10px; display: flex; align-items: flex-end; gap: 8px; }
   .empty-pane { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--mc-ink-soft); font-size: .9rem; }
 </style>
@@ -152,9 +153,9 @@
 
 <script src="assets/js/i18n.js"></script>
 <script src="assets/js/app.js"></script>
-<script src="assets/js/api.js"></script>
+<script src="assets/js/api.js?v=2"></script>
 <script src="assets/js/auth.js"></script>
-<script src="assets/js/inbox.js?v=9"></script>
+<script src="assets/js/inbox.js?v=10"></script>
 <script>
   MCAuth.guard();
   const session = MCAuth.getSession();

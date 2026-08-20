@@ -92,6 +92,7 @@ const MCApi = (() => {
     thread: (mobile) => call("inbox.thread", { mobile }),
     send: (mobile, text) => call("inbox.send", { mobile, text }),
     sendMedia: (mobile, mediaUrl, mediaType, caption, filename) => call("inbox.sendMedia", { mobile, mediaUrl, mediaType, caption, filename }),
+    markRead: (mobile, timestamp) => call("inbox.markRead", { mobile, timestamp }),
   };
 
   const Settings = {
