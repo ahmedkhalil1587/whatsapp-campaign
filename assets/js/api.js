@@ -94,6 +94,7 @@ const MCApi = (() => {
     sendMedia: (mobile, mediaUrl, mediaType, caption, filename) => call("inbox.sendMedia", { mobile, mediaUrl, mediaType, caption, filename }),
     markRead: (mobile, timestamp) => call("inbox.markRead", { mobile, timestamp }),
     agentStatsRange: (startDate, endDate) => call("inbox.agentStatsRange", { startDate, endDate }),
+    startNewConversation: (mobile) => call("inbox.startNewConversation", { mobile }),
   };
 
   const Settings = {

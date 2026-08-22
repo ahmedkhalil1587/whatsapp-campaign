@@ -85,7 +85,7 @@ function handleRequest_(e) {
 // not just hidden in the UI.
 
 var PUBLIC_ACTIONS_ = ["auth.login", "auth.register", "auth.verify"];
-var AGENT_ALLOWED_ACTIONS_ = ["doctors.list", "doctors.create", "doctors.update", "doctors.delete", "doctors.bulkImport", "inbox.list", "inbox.thread", "inbox.send", "inbox.sendMedia", "inbox.markRead", "media.upload"];
+var AGENT_ALLOWED_ACTIONS_ = ["doctors.list", "doctors.create", "doctors.update", "doctors.delete", "doctors.bulkImport", "inbox.list", "inbox.thread", "inbox.send", "inbox.sendMedia", "inbox.markRead", "inbox.startNewConversation", "media.upload"];
 var SESSION_TTL_SECONDS_ = 21600; // 6 hours; slides forward on each authorized request
 
 function generateToken_(username, role) {
@@ -152,6 +152,7 @@ function routeAction_(action, body) {
     case "inbox.send":        return sendInboxReply_(body.mobile, body.text, session.username);
     case "inbox.sendMedia":    return sendInboxMedia_(body.mobile, body.mediaUrl, body.mediaType, body.caption, body.filename, session.username);
     case "inbox.markRead":    return { ok: true, readAt: markConversationRead_(body.mobile, body.timestamp, session.username) };
+    case "inbox.startNewConversation": return startNewConversation_(body.mobile, session.username);
 
     // Admin-only (not in AGENT_ALLOWED_ACTIONS_ — this is for evaluating agents, not for agents themselves).
     case "inbox.agentStatsRange": return { ok: true, stats: buildAgentStatsRange_(body.startDate, body.endDate) };
@@ -698,6 +699,7 @@ function fieldValueForDoctor_(fieldName, doctor) {
 
 /** Sends one message for one doctor, using free-form text/image or an approved template depending on the campaign's MessageType. */
 function sendOneCampaignMessage_(campaign, doctor) {
+  var waMessageId, body;
   if (campaign.MessageType === "template") {
     var paramFields = campaign.TemplateParams
       ? String(campaign.TemplateParams).split(",").map(function (s) { return s.trim(); }).filter(Boolean)
@@ -706,10 +708,39 @@ function sendOneCampaignMessage_(campaign, doctor) {
     var paramNames = campaign.TemplateParamNames
       ? String(campaign.TemplateParamNames).split(",").map(function (s) { return s.trim(); }).filter(Boolean)
       : null;
-    return sendWhatsAppTemplateMessage_(doctor.Mobile, campaign.TemplateName, campaign.TemplateLanguage, paramValues, paramNames, campaign.ImageUrl);
+    waMessageId = sendWhatsAppTemplateMessage_(doctor.Mobile, campaign.TemplateName, campaign.TemplateLanguage, paramValues, paramNames, campaign.ImageUrl);
+    // We don't know the approved template's exact wording here (it lives
+    // on Meta's side), so show something identifying enough to give
+    // context in the unified chat view instead of the literal text.
+    body = "[قالب: " + campaign.TemplateName + "]" + (paramValues.length ? " — " + paramValues.join(" | ") : "");
+  } else {
+    body = renderTemplate_(campaign.Message, doctor);
+    waMessageId = sendWhatsAppMessage_(doctor.Mobile, body, campaign.ImageUrl);
   }
-  var text = renderTemplate_(campaign.Message, doctor);
-  return sendWhatsAppMessage_(doctor.Mobile, text, campaign.ImageUrl);
+
+  // Log it into Inbox too (not just Logs, which only feeds delivery
+  // stats) so every outbound message — campaign, one-off reply, or new
+  // conversation — shows up in the same chat thread. Without this, an
+  // agent looking at the chat later has no idea a campaign message was
+  // ever sent, and can't tell what the customer's reply is actually
+  // about. Left with no AgentUsername on purpose: this wasn't a
+  // customer-service reply, so it shouldn't count toward agent stats.
+  try {
+    appendRow_("Inbox", {
+      Timestamp: new Date().toISOString(),
+      MobileNumber: doctor.Mobile,
+      CustomerID: doctor.ID || "",
+      Direction: "out",
+      Body: body,
+      MediaUrl: campaign.ImageUrl || "",
+      WaMessageId: waMessageId || "",
+      Status: "sent",
+    });
+  } catch (err) {
+    // Never let a logging hiccup fail the actual send — the message already went out.
+  }
+
+  return waMessageId;
 }
 
 /**
@@ -1142,6 +1173,43 @@ function sendInboxReply_(mobile, body, agentUsername) {
   });
   markConversationRead_(mobile, new Date().toISOString(), agentUsername); // replying implies you've seen it
   return { ok: true };
+}
+
+// ---------------------------------------------------------------
+// Starting a brand-new conversation (no prior messages, so a free-form
+// text would be silently rejected by WhatsApp — has to be an approved
+// template). Fixed to a single pre-approved template with NO variables,
+// used for doctor-requested one-off outreach to a specific patient —
+// e.g. "please contact us" — set up once via WhatsApp Manager.
+// ---------------------------------------------------------------
+
+var NEW_CONVERSATION_TEMPLATE_NAME_ = "new_message";
+var NEW_CONVERSATION_TEMPLATE_LANG_ = "ar_EG";
+// Mirrors the template's exact approved wording, purely so it shows up
+// correctly in our own Inbox chat log — we aren't sending this text
+// ourselves, it's baked into the already-approved template on Meta's side.
+var NEW_CONVERSATION_TEMPLATE_BODY_ = "الرجاء التواصل مع مجمع المدلوح للاهمية؛\n\nبيانات التواصل / هاتفيا او عبر واتس اب من خلال الرقم الموحد:\n920014603";
+
+function startNewConversation_(mobile, agentUsername) {
+  var cleanMobile = String(mobile || "").replace(/[^0-9]/g, "");
+  if (!cleanMobile) return { ok: false, error: "رقم الجوال غير صالح." };
+
+  var waMessageId = sendWhatsAppTemplateMessage_(cleanMobile, NEW_CONVERSATION_TEMPLATE_NAME_, NEW_CONVERSATION_TEMPLATE_LANG_, [], null, "");
+
+  var doctors = sheetToObjects_("Doctors");
+  var doctor = doctors.find(function (d) { return normalizeMobile_(d.Mobile) === normalizeMobile_(cleanMobile); });
+  appendRow_("Inbox", {
+    Timestamp: new Date().toISOString(),
+    MobileNumber: cleanMobile,
+    CustomerID: doctor ? doctor.ID : "",
+    Direction: "out",
+    Body: NEW_CONVERSATION_TEMPLATE_BODY_,
+    WaMessageId: waMessageId || "",
+    Status: "sent",
+    AgentUsername: agentUsername || "",
+  });
+  markConversationRead_(cleanMobile, new Date().toISOString(), agentUsername);
+  return { ok: true, mobile: cleanMobile };
 }
 
 

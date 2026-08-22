@@ -353,6 +353,14 @@
     "unknownCustomer": "عميل غير معروف",
     "attachment": "مرفق",
     "reactedWith": "رياكشن:",
+    "newConversation": {
+      "title": "بدء محادثة جديدة",
+      "explain": "هيتبعت قالب واتساب معتمد مسبقًا، فهيوصل للمريض حتى لو ماراسلش الرقم ده قبل كده أبدًا.",
+      "mobileLabel": "رقم جوال المريض",
+      "invalidMobile": "من فضلك اكتب رقم جوال صحيح.",
+      "send": "إرسال",
+      "sent": "تم إرسال الرسالة."
+    },
     "refresh": "تحديث",
     "filterAll": "الكل",
     "filterUnread": "غير مقروءة",

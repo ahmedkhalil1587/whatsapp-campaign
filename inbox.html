@@ -127,7 +127,12 @@
       <div class="inbox-shell">
         <div class="conv-list" id="convList">
           <div class="p-2">
-            <input type="text" class="form-control form-control-sm" id="convSearch" data-i18n-placeholder="inbox.searchPlaceholder" placeholder="Search conversations...">
+            <div class="d-flex gap-2">
+              <input type="text" class="form-control form-control-sm" id="convSearch" data-i18n-placeholder="inbox.searchPlaceholder" placeholder="Search conversations...">
+              <button type="button" class="btn btn-mc-primary btn-sm flex-shrink-0 d-flex align-items-center gap-1" id="newConversationBtn" title="New conversation">
+                <i class="bi bi-plus-lg"></i>
+              </button>
+            </div>
           </div>
           <div class="conv-filter-bar btn-group btn-group-sm w-100 px-2 pb-2" role="group">
             <button type="button" class="btn btn-outline-secondary conv-filter-btn active" data-filter="all" data-i18n="inbox.filterAll">All</button>
@@ -159,11 +164,35 @@
   </div>
 </div>
 
+<!-- New conversation modal: fixed pre-approved template (no free text), so
+     it works even for a patient who has never messaged the business before. -->
+<div class="modal fade" id="newConversationModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" data-i18n="inbox.newConversation.title">Start new conversation</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small text-secondary" data-i18n="inbox.newConversation.explain">This sends a pre-approved WhatsApp template message, so it reaches the patient even if they've never messaged this number before.</p>
+        <label class="form-label small fw-semibold" data-i18n="inbox.newConversation.mobileLabel">Patient's mobile number</label>
+        <input type="tel" class="form-control" id="newConversationMobile" dir="ltr" placeholder="9665XXXXXXXX">
+        <div class="small text-danger mt-2 d-none" id="newConversationError"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">Cancel</button>
+        <button type="button" class="btn btn-mc-primary" id="newConversationSendBtn" data-i18n="inbox.newConversation.send">Send</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="assets/js/i18n.js"></script>
 <script src="assets/js/app.js"></script>
 <script src="assets/js/api.js?v=2"></script>
 <script src="assets/js/auth.js"></script>
-<script src="assets/js/inbox.js?v=12"></script>
+<script src="assets/js/inbox.js?v=13"></script>
 <script>
   MCAuth.guard();
   const session = MCAuth.getSession();

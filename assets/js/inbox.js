@@ -320,6 +320,41 @@ document.addEventListener("DOMContentLoaded", () => {
     e.target.value = "";
   });
 
+  let newConversationModal;
+  document.getElementById("newConversationBtn").addEventListener("click", () => {
+    if (!newConversationModal) newConversationModal = new bootstrap.Modal(document.getElementById("newConversationModal"));
+    document.getElementById("newConversationMobile").value = "";
+    document.getElementById("newConversationError").classList.add("d-none");
+    newConversationModal.show();
+    setTimeout(() => document.getElementById("newConversationMobile").focus(), 200);
+  });
+  document.getElementById("newConversationSendBtn").addEventListener("click", async () => {
+    const input = document.getElementById("newConversationMobile");
+    const errEl = document.getElementById("newConversationError");
+    const btn = document.getElementById("newConversationSendBtn");
+    const mobile = input.value.replace(/[^0-9]/g, "");
+    errEl.classList.add("d-none");
+    if (!mobile) {
+      errEl.textContent = I18N.t("inbox.newConversation.invalidMobile");
+      errEl.classList.remove("d-none");
+      return;
+    }
+    if (!MCApi.isConfigured()) { MCApp.toast(I18N.t("common.error"), "error"); return; }
+    btn.disabled = true;
+    try {
+      await MCApi.Inbox.startNewConversation(mobile);
+      newConversationModal.hide();
+      MCApp.toast(I18N.t("inbox.newConversation.sent"), "success");
+      await loadConversations(true);
+      await loadThread(mobile, true);
+    } catch (err) {
+      errEl.textContent = err.message || I18N.t("common.error");
+      errEl.classList.remove("d-none");
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
   // Live-updates so new incoming messages show up without a manual refresh.
   // Apps Script has a low concurrent-execution ceiling, so we poll at a
   // moderate interval (not too fast) and skip a cycle entirely if the

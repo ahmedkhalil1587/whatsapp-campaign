@@ -353,6 +353,14 @@
     "unknownCustomer": "Unknown customer",
     "attachment": "Attachment",
     "reactedWith": "Reacted:",
+    "newConversation": {
+      "title": "Start new conversation",
+      "explain": "This sends a pre-approved WhatsApp template message, so it reaches the patient even if they've never messaged this number before.",
+      "mobileLabel": "Patient's mobile number",
+      "invalidMobile": "Please enter a valid mobile number.",
+      "send": "Send",
+      "sent": "Message sent."
+    },
     "refresh": "Refresh",
     "filterAll": "All",
     "filterUnread": "Unread",
