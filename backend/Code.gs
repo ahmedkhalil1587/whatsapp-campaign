@@ -475,7 +475,10 @@ function buildAgentStatsRange_(startDate, endDate) {
   });
 
   var totalOutbound = inRange.filter(function (r) { return r.Direction === "out"; }).length;
-  var totalInbound = inRange.length - totalOutbound;
+  // "Received messages" for this metric means actual customer messages —
+  // reaction pings (👍 etc.) aren't something an agent is expected to
+  // reply to, so they're excluded from the denominator.
+  var totalInbound = inRange.filter(function (r) { return r.Direction !== "out" && r.Status !== "reaction"; }).length;
 
   var byAgent = {};
   inRange.forEach(function (r) {
@@ -491,16 +494,24 @@ function buildAgentStatsRange_(startDate, endDate) {
     return {
       username: a.username,
       replies: a.replies,
-      // Share of all outbound replies in the range attributed to a known
-      // agent — not of every message including unattributed/auto ones.
-      percentage: totalOutbound > 0 ? Math.round((a.replies / totalOutbound) * 1000) / 10 : 0,
+      // Each agent's share of TOTAL RECEIVED customer messages in the
+      // range (not of total replies) — e.g. 100 messages came in, this
+      // agent replied to 20 of them → 20%. Note more than one agent can
+      // reply to the same customer message, so the percentages across
+      // agents can add up to more than 100%; that's expected, not a bug.
+      percentage: totalInbound > 0 ? Math.round((a.replies / totalInbound) * 1000) / 10 : 0,
     };
   }).sort(function (a, b) { return b.replies - a.replies; });
+
+  var totalRepliesFromAgents = result.reduce(function (sum, a) { return sum + a.replies; }, 0);
 
   return {
     rows: result,
     totalOutbound: totalOutbound,
     totalInbound: totalInbound,
+    // Overall coverage: what share of all received messages got *some*
+    // reply from *some* agent — the "70% تم الرد عليها" headline number.
+    coveragePercentage: totalInbound > 0 ? Math.round((totalRepliesFromAgents / totalInbound) * 1000) / 10 : 0,
     rangeStart: startDate || "",
     rangeEnd: endDate || "",
   };

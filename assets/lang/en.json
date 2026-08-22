@@ -95,11 +95,11 @@
     "load": "Show stats",
     "export": "Download Excel",
     "chartTitle": "Replies per agent",
-    "shareTitle": "Share of total replies",
+    "shareTitle": "Share of received messages",
     "tableTitle": "Breakdown",
     "replies": "Replies",
-    "share": "Share of total",
-    "summary": "{total} total replies from {agents} agent(s) in the selected period."
+    "share": "% of messages received",
+    "summary": "{received} messages received in this period — {coverage}% were replied to, across {agents} agent(s)."
   },
   "common": {
     "loading": "Loading...",

@@ -80,7 +80,8 @@ function renderSummary(stats) {
   const el = document.getElementById("agentStatsSummary");
   const numFmt = new Intl.NumberFormat(I18N.lang === "ar" ? "ar-EG" : "en-US");
   el.textContent = t("agentStats.summary", {
-    total: numFmt.format(stats.totalOutbound || 0),
+    received: numFmt.format(stats.totalInbound || 0),
+    coverage: stats.coveragePercentage || 0,
     agents: numFmt.format((stats.rows || []).length),
   });
 }
