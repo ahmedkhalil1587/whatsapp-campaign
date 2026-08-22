@@ -366,7 +366,9 @@
     "filterUnread": "Unread",
     "filterReplied": "Read",
     "filterRead": "Read",
-    "markRead": "Mark as read"
+    "markRead": "Mark as read",
+    "pin": "Pin conversation",
+    "unpin": "Unpin"
   },
   "signup": {
     "visualQuote": "Request an account and an admin will review it shortly.",

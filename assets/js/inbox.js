@@ -90,7 +90,10 @@ function renderConvList() {
     .filter((c) => !q
       || String(c.CustomerName || "").toLowerCase().includes(q)
       || String(c.MobileNumber || "").includes(q))
-    .filter((c) => convFilter === "all" || (convFilter === "unread" ? isConvUnread(c) : !isConvUnread(c)));
+    .filter((c) => convFilter === "all" || (convFilter === "unread" ? isConvUnread(c) : !isConvUnread(c)))
+    // Pinned conversations always float to the top (this user's own pins
+    // only), most-recently-active first within each group.
+    .sort((a, b) => (Number(!!b.Pinned) - Number(!!a.Pinned)) || (new Date(b.LastTimestamp) - new Date(a.LastTimestamp)));
 
   const unreadCount = allConversations.filter(isConvUnread).length;
   const unreadBtn = document.querySelector('.conv-filter-btn[data-filter="unread"]');
@@ -104,9 +107,9 @@ function renderConvList() {
   box.innerHTML = rows.map((c) => {
     const unread = isConvUnread(c);
     return `
-    <div class="conv-item ${c.MobileNumber === activeMobile ? "active" : ""} ${unread ? "unread" : ""}" data-mobile="${escapeHtml(c.MobileNumber)}">
+    <div class="conv-item ${c.MobileNumber === activeMobile ? "active" : ""} ${unread ? "unread" : ""} ${c.Pinned ? "pinned" : ""}" data-mobile="${escapeHtml(c.MobileNumber)}">
       <div class="d-flex justify-content-between align-items-center">
-        <span class="conv-name">${escapeHtml(c.CustomerName) || I18N.t("inbox.unknownCustomer")}${unread ? '<span class="conv-unread-dot"></span>' : ""}</span>
+        <span class="conv-name">${c.Pinned ? '<i class="bi bi-pin-angle-fill conv-pin-indicator"></i> ' : ""}${escapeHtml(c.CustomerName) || I18N.t("inbox.unknownCustomer")}${unread ? '<span class="conv-unread-dot"></span>' : ""}</span>
         <span class="conv-time">${c.LastTimestamp ? dateFmt.format(new Date(c.LastTimestamp)) : ""}</span>
       </div>
       <div class="d-flex justify-content-between align-items-end">
@@ -114,15 +117,37 @@ function renderConvList() {
           <div class="conv-preview" dir="ltr">${escapeHtml(c.MobileNumber)}</div>
           <div class="conv-preview">${c.LastDirection === "out" ? "↩ " : ""}${c.LastStatus === "reaction" ? `${I18N.t("inbox.reactedWith")} ${escapeHtml(c.LastMessage)}` : escapeHtml(c.LastMessage)}</div>
         </div>
-        ${unread ? `<button type="button" class="btn btn-sm btn-light conv-mark-read-btn" data-mobile="${escapeHtml(c.MobileNumber)}" title="${I18N.t("inbox.markRead")}"><i class="bi bi-check2"></i></button>` : ""}
+        <div class="d-flex gap-1">
+          <button type="button" class="btn btn-sm btn-light conv-pin-btn" data-mobile="${escapeHtml(c.MobileNumber)}" data-pinned="${c.Pinned ? "1" : "0"}" title="${c.Pinned ? I18N.t("inbox.unpin") : I18N.t("inbox.pin")}"><i class="bi ${c.Pinned ? "bi-pin-fill" : "bi-pin"}"></i></button>
+          ${unread ? `<button type="button" class="btn btn-sm btn-light conv-mark-read-btn" data-mobile="${escapeHtml(c.MobileNumber)}" title="${I18N.t("inbox.markRead")}"><i class="bi bi-check2"></i></button>` : ""}
+        </div>
       </div>
     </div>`;
   }).join("");
 
   box.querySelectorAll(".conv-item").forEach((el) => {
     el.addEventListener("click", (e) => {
-      if (e.target.closest(".conv-mark-read-btn")) return; // handled separately below
+      if (e.target.closest(".conv-mark-read-btn") || e.target.closest(".conv-pin-btn")) return; // handled separately below
       loadThread(el.getAttribute("data-mobile"), true);
+    });
+  });
+  // Pin / unpin without opening the thread.
+  box.querySelectorAll(".conv-pin-btn").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const mobile = btn.getAttribute("data-mobile");
+      const wasPinned = btn.getAttribute("data-pinned") === "1";
+      const conv = allConversations.find((c) => c.MobileNumber === mobile);
+      if (conv) conv.Pinned = !wasPinned; // optimistic — feels instant, no need to wait on the round trip
+      renderConvList();
+      try {
+        if (wasPinned) await MCApi.Inbox.unpin(mobile);
+        else await MCApi.Inbox.pin(mobile);
+      } catch (err) {
+        if (conv) conv.Pinned = wasPinned; // roll back on failure
+        renderConvList();
+        MCApp.toast(err.message || I18N.t("common.error"), "error");
+      }
     });
   });
   // "Mark as read" without opening the thread — for messages that don't

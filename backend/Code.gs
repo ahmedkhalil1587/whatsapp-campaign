@@ -11,6 +11,7 @@
  *   Logs       : Timestamp | CampaignID | DoctorID | MobileNumber | WaMessageId | Status
  *   Inbox      : Timestamp | MobileNumber | CustomerID | Direction | Body | MediaUrl | WaMessageId | Status | AgentUsername
  *   InboxReadState : MobileNumber | LastReadTimestamp | LastReadBy
+ *   PinnedConversations : Username | MobileNumber | PinnedAt
  *   Signups    : ID | Timestamp | Name | Email | PasswordHash | Status | VerificationCode | Role
  *   Users      : Username | Password | Name | Role
  *
@@ -85,7 +86,7 @@ function handleRequest_(e) {
 // not just hidden in the UI.
 
 var PUBLIC_ACTIONS_ = ["auth.login", "auth.register", "auth.verify"];
-var AGENT_ALLOWED_ACTIONS_ = ["doctors.list", "doctors.create", "doctors.update", "doctors.delete", "doctors.bulkImport", "inbox.list", "inbox.thread", "inbox.send", "inbox.sendMedia", "inbox.markRead", "inbox.startNewConversation", "media.upload"];
+var AGENT_ALLOWED_ACTIONS_ = ["doctors.list", "doctors.create", "doctors.update", "doctors.delete", "doctors.bulkImport", "inbox.list", "inbox.thread", "inbox.send", "inbox.sendMedia", "inbox.markRead", "inbox.startNewConversation", "inbox.pin", "inbox.unpin", "media.upload"];
 var SESSION_TTL_SECONDS_ = 21600; // 6 hours; slides forward on each authorized request
 
 function generateToken_(username, role) {
@@ -147,12 +148,14 @@ function routeAction_(action, body) {
 
     case "history.list":      return { ok: true, rows: buildHistoryRows_() };
 
-    case "inbox.list":        return { ok: true, rows: buildInboxConversations_() };
+    case "inbox.list":        return { ok: true, rows: buildInboxConversations_(session.username) };
     case "inbox.thread":      return { ok: true, rows: sheetToObjects_("Inbox").filter(function (r) { return String(r.MobileNumber).trim() === String(body.mobile).trim(); }).sort(function (a, b) { return new Date(a.Timestamp) - new Date(b.Timestamp); }) };
     case "inbox.send":        return sendInboxReply_(body.mobile, body.text, session.username);
     case "inbox.sendMedia":    return sendInboxMedia_(body.mobile, body.mediaUrl, body.mediaType, body.caption, body.filename, session.username);
     case "inbox.markRead":    return { ok: true, readAt: markConversationRead_(body.mobile, body.timestamp, session.username) };
     case "inbox.startNewConversation": return startNewConversation_(body.mobile, session.username);
+    case "inbox.pin":         return pinConversation_(session.username, body.mobile);
+    case "inbox.unpin":       return unpinConversation_(session.username, body.mobile);
 
     // Admin-only (not in AGENT_ALLOWED_ACTIONS_ — this is for evaluating agents, not for agents themselves).
     case "inbox.agentStatsRange": return { ok: true, stats: buildAgentStatsRange_(body.startDate, body.endDate) };
@@ -1045,12 +1048,13 @@ function fetchAndStoreIncomingMedia_(mediaId, mimeType) {
 }
 
 /** Returns one row per conversation (most recent message per mobile number), newest first. */
-function buildInboxConversations_() {
+function buildInboxConversations_(currentUsername) {
   var rows = sheetToObjects_("Inbox");
   var doctors = sheetToObjects_("Doctors");
   var doctorByMobile = {};
   doctors.forEach(function (d) { doctorByMobile[normalizeMobile_(d.Mobile)] = d; });
   var readByMobile = getReadStateMap_();
+  var pinnedMobiles = getPinnedMobilesForUser_(currentUsername); // {mobile: pinnedAt}, this user only
 
   var byMobile = {};
   rows.forEach(function (r) {
@@ -1076,8 +1080,64 @@ function buildInboxConversations_() {
       // of keeping its own per-browser read/unread flag.
       LastReadTimestamp: readState ? readState.LastReadTimestamp : "",
       LastReadBy: readState ? readState.LastReadBy : "",
+      // Per-user pin (see PinnedConversations sheet) — each agent pins
+      // their own frequently-needed numbers (support line, manager,
+      // etc.), independent of what anyone else has pinned.
+      Pinned: !!pinnedMobiles[mobile],
+      PinnedAt: pinnedMobiles[mobile] || "",
     };
   }).sort(function (a, b) { return new Date(b.LastTimestamp) - new Date(a.LastTimestamp); });
+}
+
+// ---------------------------------------------------------------
+// Pinned conversations — per-user, synced across devices (see
+// PinnedConversations sheet: Username | MobileNumber | PinnedAt). Each
+// agent pins their own frequently-needed numbers (e.g. "IT support",
+// "customer service manager") so they're always at the top of their own
+// conversation list instead of searching by name every time.
+// ---------------------------------------------------------------
+
+function getPinnedMobilesForUser_(username) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("PinnedConversations");
+  if (!sheet || !username) return {};
+  var rows = sheetToObjects_("PinnedConversations");
+  var map = {};
+  rows.forEach(function (r) {
+    if (String(r.Username).trim() === String(username).trim()) {
+      map[String(r.MobileNumber).trim()] = r.PinnedAt || new Date().toISOString();
+    }
+  });
+  return map;
+}
+
+function pinConversation_(username, mobile) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("PinnedConversations");
+  if (!sheet) return { ok: false, error: "PinnedConversations sheet isn't set up yet." };
+  var mobileClean = String(mobile || "").trim();
+  if (!mobileClean || !username) return { ok: false, error: "Missing mobile or user." };
+
+  var existing = sheetToObjects_("PinnedConversations").some(function (r) {
+    return String(r.Username).trim() === String(username).trim() && String(r.MobileNumber).trim() === mobileClean;
+  });
+  if (existing) return { ok: true }; // already pinned — nothing to do
+  appendRow_("PinnedConversations", { Username: username, MobileNumber: mobileClean, PinnedAt: new Date().toISOString() });
+  return { ok: true };
+}
+
+function unpinConversation_(username, mobile) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("PinnedConversations");
+  if (!sheet) return { ok: true };
+  var mobileClean = String(mobile || "").trim();
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var userCol = headers.indexOf("Username");
+  var mobileCol = headers.indexOf("MobileNumber");
+  var values = sheet.getDataRange().getValues();
+  for (var i = values.length - 1; i >= 1; i--) {
+    if (String(values[i][userCol]).trim() === String(username).trim() && String(values[i][mobileCol]).trim() === mobileClean) {
+      sheet.deleteRow(i + 1);
+    }
+  }
+  return { ok: true };
 }
 
 // ---------------------------------------------------------------

@@ -22,6 +22,8 @@
   .conv-item.unread { background: var(--mc-primary-light); }
   .conv-item.unread .conv-name { font-weight: 800; }
   .conv-item.unread .conv-preview:last-child { color: var(--mc-ink); font-weight: 600; }
+  .conv-item.pinned { background: color-mix(in srgb, var(--mc-primary) 6%, transparent); }
+  .conv-pin-indicator { font-size: .75rem; color: var(--mc-primary); margin-inline-end: 2px; }
   .conv-unread-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--mc-primary); margin-inline-start: 6px; flex-shrink: 0; }
   .conv-filter-bar .btn { font-size: .74rem; padding: 4px 6px; }
   .conv-filter-bar .btn.active { background: var(--mc-primary); border-color: var(--mc-primary); color: #fff; }
@@ -192,7 +194,7 @@
 <script src="assets/js/app.js"></script>
 <script src="assets/js/api.js?v=2"></script>
 <script src="assets/js/auth.js"></script>
-<script src="assets/js/inbox.js?v=13"></script>
+<script src="assets/js/inbox.js?v=14"></script>
 <script>
   MCAuth.guard();
   const session = MCAuth.getSession();

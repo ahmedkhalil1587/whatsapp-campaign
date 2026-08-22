@@ -366,7 +366,9 @@
     "filterUnread": "غير مقروءة",
     "filterReplied": "مقروءة",
     "filterRead": "مقروءة",
-    "markRead": "علّم كمقروءة"
+    "markRead": "علّم كمقروءة",
+    "pin": "تثبيت المحادثة",
+    "unpin": "إلغاء التثبيت"
   },
   "signup": {
     "visualQuote": "اطلب حساب وهيراجعه أدمن قريب.",

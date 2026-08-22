@@ -95,6 +95,8 @@ const MCApi = (() => {
     markRead: (mobile, timestamp) => call("inbox.markRead", { mobile, timestamp }),
     agentStatsRange: (startDate, endDate) => call("inbox.agentStatsRange", { startDate, endDate }),
     startNewConversation: (mobile) => call("inbox.startNewConversation", { mobile }),
+    pin: (mobile) => call("inbox.pin", { mobile }),
+    unpin: (mobile) => call("inbox.unpin", { mobile }),
   };
 
   const Settings = {
