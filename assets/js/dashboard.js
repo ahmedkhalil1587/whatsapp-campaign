@@ -25,6 +25,10 @@ const DEMO_STATS = {
     { name: "Oncology Certificate Ready", date: "2026-07-10", recipients: 410, delivered: 402, status: "completed" },
     { name: "Dermatology Last Chance", date: "2026-07-05", recipients: 980, delivered: 915, status: "completed" },
   ],
+  agentStats: [
+    { username: "sara.ahmed", totalReplies: 214, repliesToday: 18, lastReplyAt: "2026-08-20T10:40:00Z" },
+    { username: "omar.hassan", totalReplies: 176, repliesToday: 9, lastReplyAt: "2026-08-20T09:15:00Z" },
+  ],
 };
 
 const STAT_DEFS = [
@@ -134,6 +138,24 @@ function renderCharts(stats) {
   });
 }
 
+function renderAgentStats(rows) {
+  const body = document.getElementById("agentStatsBody");
+  if (!body) return; // page might not have this section (older cached HTML)
+  if (!rows || rows.length === 0) {
+    body.innerHTML = `<tr><td colspan="4" class="text-center text-secondary py-4">${I18N.t("dashboard.agents.empty")}</td></tr>`;
+    return;
+  }
+  const dateFmt = new Intl.DateTimeFormat(I18N.lang === "ar" ? "ar-EG" : "en-US", { dateStyle: "medium", timeStyle: "short" });
+  const numFmt = new Intl.NumberFormat(I18N.lang === "ar" ? "ar-EG" : "en-US");
+  body.innerHTML = rows.map((a) => `
+    <tr>
+      <td class="fw-semibold">${a.username || "—"}</td>
+      <td>${numFmt.format(a.totalReplies || 0)}</td>
+      <td>${numFmt.format(a.repliesToday || 0)}</td>
+      <td class="text-secondary">${a.lastReplyAt ? dateFmt.format(new Date(a.lastReplyAt)) : "—"}</td>
+    </tr>`).join("");
+}
+
 async function loadDashboard() {
   renderSkeletonCards();
   let stats = DEMO_STATS;
@@ -147,6 +169,7 @@ async function loadDashboard() {
   }
   renderStatCards(stats);
   renderRecentCampaigns(stats.recent);
+  renderAgentStats(stats.agentStats);
   renderCharts(stats);
 }
 

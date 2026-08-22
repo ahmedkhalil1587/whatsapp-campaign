@@ -112,7 +112,7 @@ function renderConvList() {
       <div class="d-flex justify-content-between align-items-end">
         <div>
           <div class="conv-preview" dir="ltr">${escapeHtml(c.MobileNumber)}</div>
-          <div class="conv-preview">${c.LastDirection === "out" ? "↩ " : ""}${escapeHtml(c.LastMessage)}</div>
+          <div class="conv-preview">${c.LastDirection === "out" ? "↩ " : ""}${c.LastStatus === "reaction" ? `${I18N.t("inbox.reactedWith")} ${escapeHtml(c.LastMessage)}` : escapeHtml(c.LastMessage)}</div>
         </div>
         ${unread ? `<button type="button" class="btn btn-sm btn-light conv-mark-read-btn" data-mobile="${escapeHtml(c.MobileNumber)}" title="${I18N.t("inbox.markRead")}"><i class="bi bi-check2"></i></button>` : ""}
       </div>
@@ -155,7 +155,13 @@ async function loadThread(mobile, scrollToBottom) {
   // previous visit, paint it immediately (feels instant) while we fetch the
   // real up-to-date version in the background and swap it in once it lands.
   const cached = threadCache[mobile];
-  if (cached) renderThread(cached, true);
+  // Paint the cached copy immediately, but respect the caller's intent on
+  // whether to jump to the bottom — a silent background poll refresh of
+  // the currently-open chat passes scrollToBottom=false precisely so it
+  // doesn't yank someone away from history they're reading. Hardcoding
+  // "true" here (as before) forced a jump to the latest message on
+  // *every* poll cycle regardless of where the person had scrolled to.
+  if (cached) renderThread(cached, scrollToBottom);
   else {
     document.getElementById("threadBody").innerHTML = `<div class="text-center text-secondary small py-3">${I18N.t("common.loading") || "…"}</div>`;
   }
@@ -184,6 +190,17 @@ function renderThread(rows, forceScrollToBottom) {
   // Skip any blank/malformed rows (e.g. an empty row in the sheet) instead
   // of letting them throw and abort the whole render.
   body.innerHTML = rows.filter((r) => r && (r.Body || r.MediaUrl)).map((r) => {
+    // Reactions (👍, ❤️, etc. on a message) come through as their own row
+    // (Status === "reaction", see Code.gs) — render them as a small,
+    // borderless emoji instead of a normal chat bubble; a full-size box
+    // around a single emoji looks broken and buries it visually.
+    if (r.Status === "reaction") {
+      return `
+      <div class="msg-reaction ${r.Direction === "out" ? "out" : "in"}" dir="auto">
+        <span class="msg-reaction-emoji">${escapeHtml(String(r.Body ?? ""))}</span>
+        <span class="msg-time">${r.Timestamp ? timeFmt.format(new Date(r.Timestamp)) : ""}</span>
+      </div>`;
+    }
     // We can't reliably tell "image vs. document" from the URL alone (e.g.
     // Drive links like drive.google.com/uc?...id=... have no file
     // extension), so always try rendering it as an image first; if the

@@ -11,6 +11,7 @@
     "history": "History",
     "inbox": "Messages",
     "requests": "Signup Requests",
+    "agentStats": "Agent Activity",
     "settings": "Settings",
     "logout": "Log out"
   },
@@ -76,7 +77,29 @@
       "draft": "Draft"
     },
     "empty": "No campaigns yet. Start by creating your first one.",
-    "loading": "Loading your dashboard..."
+    "loading": "Loading your dashboard...",
+    "agents": {
+      "title": "Customer service activity",
+      "agent": "Agent",
+      "total": "Total replies",
+      "today": "Today",
+      "lastReply": "Last reply",
+      "empty": "No replies logged yet."
+    }
+  },
+  "agentStats": {
+    "title": "Agent activity",
+    "subtitle": "Reply share per customer-service agent over a chosen period — useful for performance reviews.",
+    "from": "From",
+    "to": "To",
+    "load": "Show stats",
+    "export": "Download Excel",
+    "chartTitle": "Replies per agent",
+    "shareTitle": "Share of total replies",
+    "tableTitle": "Breakdown",
+    "replies": "Replies",
+    "share": "Share of total",
+    "summary": "{total} total replies from {agents} agent(s) in the selected period."
   },
   "common": {
     "loading": "Loading...",
@@ -328,6 +351,7 @@
     "sendError": "Could not send — the customer may be outside the 24-hour reply window.",
     "unknownCustomer": "Unknown customer",
     "attachment": "Attachment",
+    "reactedWith": "Reacted:",
     "refresh": "Refresh",
     "filterAll": "All",
     "filterUnread": "Unread",

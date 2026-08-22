@@ -153,6 +153,9 @@ function routeAction_(action, body) {
     case "inbox.sendMedia":    return sendInboxMedia_(body.mobile, body.mediaUrl, body.mediaType, body.caption, body.filename, session.username);
     case "inbox.markRead":    return { ok: true, readAt: markConversationRead_(body.mobile, body.timestamp, session.username) };
 
+    // Admin-only (not in AGENT_ALLOWED_ACTIONS_ — this is for evaluating agents, not for agents themselves).
+    case "inbox.agentStatsRange": return { ok: true, stats: buildAgentStatsRange_(body.startDate, body.endDate) };
+
     case "settings.get":      return { ok: true, settings: getPublicSettings_() };
     case "settings.save":     return { ok: true, settings: saveSettings_(body.settings) };
 
@@ -420,6 +423,86 @@ function buildDashboardStats_() {
       delivered: recent.map(function (r) { return r.delivered; }),
     },
     recent: recent,
+    agentStats: buildAgentStats_(),
+  };
+}
+
+/**
+ * Per-agent reply activity from the Inbox sheet's AgentUsername column
+ * (populated by sendInboxReply_/sendInboxMedia_ whenever someone replies
+ * to a customer from the Inbox chat). Counts total replies and replies
+ * sent today, per agent, most-active first.
+ */
+function buildAgentStats_() {
+  var rows = sheetToObjects_("Inbox");
+  var todayStr = new Date().toDateString();
+  var byAgent = {};
+  rows.forEach(function (r) {
+    if (r.Direction !== "out" || !r.AgentUsername) return;
+    var name = String(r.AgentUsername).trim();
+    if (!name) return;
+    if (!byAgent[name]) byAgent[name] = { username: name, totalReplies: 0, repliesToday: 0, lastReplyAt: "" };
+    byAgent[name].totalReplies++;
+    var ts = r.Timestamp ? new Date(r.Timestamp) : null;
+    if (ts && ts.toDateString() === todayStr) byAgent[name].repliesToday++;
+    if (ts && (!byAgent[name].lastReplyAt || ts > new Date(byAgent[name].lastReplyAt))) {
+      byAgent[name].lastReplyAt = r.Timestamp;
+    }
+  });
+  return Object.keys(byAgent).map(function (k) { return byAgent[k]; })
+    .sort(function (a, b) { return b.totalReplies - a.totalReplies; });
+}
+
+/**
+ * Per-agent reply stats within an inclusive date range, plus each agent's
+ * share (%) of total outbound replies in that range — the "evaluation"
+ * view management asked for, so it's usable for performance comparisons
+ * over an arbitrary period instead of just "totals so far".
+ * startDate/endDate are "YYYY-MM-DD" strings from an <input type="date">;
+ * either can be omitted for an open-ended range.
+ */
+function buildAgentStatsRange_(startDate, endDate) {
+  var rows = sheetToObjects_("Inbox");
+  var start = startDate ? new Date(startDate + "T00:00:00") : null;
+  var end = endDate ? new Date(endDate + "T23:59:59") : null;
+
+  var inRange = rows.filter(function (r) {
+    if (!r.Timestamp) return false;
+    var ts = new Date(r.Timestamp);
+    if (start && ts < start) return false;
+    if (end && ts > end) return false;
+    return true;
+  });
+
+  var totalOutbound = inRange.filter(function (r) { return r.Direction === "out"; }).length;
+  var totalInbound = inRange.length - totalOutbound;
+
+  var byAgent = {};
+  inRange.forEach(function (r) {
+    if (r.Direction !== "out" || !r.AgentUsername) return;
+    var name = String(r.AgentUsername).trim();
+    if (!name) return;
+    if (!byAgent[name]) byAgent[name] = { username: name, replies: 0 };
+    byAgent[name].replies++;
+  });
+
+  var result = Object.keys(byAgent).map(function (k) {
+    var a = byAgent[k];
+    return {
+      username: a.username,
+      replies: a.replies,
+      // Share of all outbound replies in the range attributed to a known
+      // agent — not of every message including unattributed/auto ones.
+      percentage: totalOutbound > 0 ? Math.round((a.replies / totalOutbound) * 1000) / 10 : 0,
+    };
+  }).sort(function (a, b) { return b.replies - a.replies; });
+
+  return {
+    rows: result,
+    totalOutbound: totalOutbound,
+    totalInbound: totalInbound,
+    rangeStart: startDate || "",
+    rangeEnd: endDate || "",
   };
 }
 
@@ -811,7 +894,16 @@ function handleWebhookMessages_(messages, contacts) {
     var mobile = String(m.from || "").trim();
     var body = "";
     var mediaUrl = "";
-    if (m.type === "text" && m.text) {
+    var status = "received";
+
+    if (m.type === "reaction") {
+      // WhatsApp sends {message_id, emoji} — emoji is "" when someone
+      // *removes* a reaction, which isn't worth logging as its own row.
+      var emoji = m.reaction && m.reaction.emoji;
+      if (!emoji) return;
+      body = emoji;
+      status = "reaction"; // lets the chat UI render it as a compact reaction bubble instead of a normal message
+    } else if (m.type === "text" && m.text) {
       body = m.text.body;
     } else if (m.type) {
       body = "[" + m.type + "]"; // fallback if there's no caption and/or the media couldn't be fetched
@@ -836,7 +928,7 @@ function handleWebhookMessages_(messages, contacts) {
       Body: body,
       MediaUrl: mediaUrl,
       WaMessageId: m.id || "",
-      Status: "received",
+      Status: status,
     });
   });
 }
@@ -914,6 +1006,7 @@ function buildInboxConversations_() {
       MobileNumber: mobile,
       CustomerName: doctor ? doctor.Name : "",
       LastMessage: last.Body,
+      LastStatus: last.Status,
       LastDirection: last.Direction,
       LastTimestamp: last.Timestamp,
       // Shared across every device/agent (stored in the InboxReadState

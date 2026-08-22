@@ -37,6 +37,11 @@
   .msg-bubble .msg-time { font-size: .65rem; color: #667781; white-space: nowrap; margin-inline-start: 6px; }
   .msg-bubble.pending { opacity: .65; }
   .msg-agent-label { font-size: .68rem; font-weight: 700; color: var(--mc-primary); margin-bottom: 2px; }
+  .msg-reaction { display: flex; align-items: center; gap: 6px; width: fit-content; padding: 2px 4px; }
+  .msg-reaction.in { align-self: flex-start; }
+  .msg-reaction.out { align-self: flex-end; }
+  .msg-reaction-emoji { font-size: 1.6rem; line-height: 1; }
+  .msg-reaction .msg-time { font-size: .62rem; color: #667781; }
   .thread-input { border-top: 1px solid var(--mc-border); background: var(--mc-surface); padding: 10px; display: flex; align-items: flex-end; gap: 8px; }
   .empty-pane { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--mc-ink-soft); font-size: .9rem; }
 </style>
@@ -73,6 +78,9 @@
       <div class="nav-section-label">—</div>
       <a class="nav-link" href="requests.html" data-page="requests">
         <i class="bi bi-person-plus-fill"></i> <span data-i18n="nav.requests">Signup Requests</span>
+      </a>
+      <a class="nav-link" href="agent-stats.html" data-page="agentStats">
+        <i class="bi bi-graph-up"></i> <span data-i18n="nav.agentStats">Agent Activity</span>
       </a>
       <a class="nav-link" href="settings.html" data-page="settings">
         <i class="bi bi-gear-fill"></i> <span data-i18n="nav.settings">Settings</span>
@@ -155,7 +163,7 @@
 <script src="assets/js/app.js"></script>
 <script src="assets/js/api.js?v=2"></script>
 <script src="assets/js/auth.js"></script>
-<script src="assets/js/inbox.js?v=10"></script>
+<script src="assets/js/inbox.js?v=12"></script>
 <script>
   MCAuth.guard();
   const session = MCAuth.getSession();

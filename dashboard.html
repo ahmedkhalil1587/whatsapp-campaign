@@ -45,6 +45,9 @@
       <a class="nav-link" href="requests.html" data-page="requests">
         <i class="bi bi-person-plus-fill"></i> <span data-i18n="nav.requests">Signup Requests</span>
       </a>
+      <a class="nav-link" href="agent-stats.html" data-page="agentStats">
+        <i class="bi bi-graph-up"></i> <span data-i18n="nav.agentStats">Agent Activity</span>
+      </a>
       <a class="nav-link" href="settings.html" data-page="settings">
         <i class="bi bi-gear-fill"></i> <span data-i18n="nav.settings">Settings</span>
       </a>
@@ -133,6 +136,26 @@
           </table>
         </div>
       </div>
+
+      <!-- Agent (customer service) reply activity -->
+      <div class="panel mt-4">
+        <div class="panel-title mb-3" data-i18n="dashboard.agents.title">Customer service activity</div>
+        <div class="table-responsive">
+          <table class="table table-mc mb-0">
+            <thead>
+              <tr>
+                <th data-i18n="dashboard.agents.agent">Agent</th>
+                <th data-i18n="dashboard.agents.total">Total replies</th>
+                <th data-i18n="dashboard.agents.today">Today</th>
+                <th data-i18n="dashboard.agents.lastReply">Last reply</th>
+              </tr>
+            </thead>
+            <tbody id="agentStatsBody">
+              <!-- populated by dashboard.js -->
+            </tbody>
+          </table>
+        </div>
+      </div>
     </main>
   </div>
 </div>
@@ -142,7 +165,7 @@
 <script src="assets/js/app.js"></script>
 <script src="assets/js/api.js?v=2"></script>
 <script src="assets/js/auth.js"></script>
-<script src="assets/js/dashboard.js"></script>
+<script src="assets/js/dashboard.js?v=2"></script>
 <script>
   MCAuth.guard();
   const session = MCAuth.getSession();
