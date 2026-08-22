@@ -32,7 +32,8 @@ function setDefaultRange() {
 function renderCharts(rows) {
   const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   const labels = rows.map((r) => r.username);
-  const counts = rows.map((r) => r.replies);
+  const counts = rows.map((r) => r.replies); // raw message volume — the bar chart
+  const customersCounts = rows.map((r) => r.customersReplied); // distinct customers handled — the doughnut/share chart
   const palette = [cssVar("--mc-primary"), cssVar("--mc-accent"), "#E8A33D", "#5B8DEF", "#D64550", "#7C5CFC", "#2FB6A6"];
   const colors = rows.map((_, i) => palette[i % palette.length]);
 
@@ -52,7 +53,7 @@ function renderCharts(rows) {
   shareChartInstance && shareChartInstance.destroy();
   shareChartInstance = new Chart(shareCtx, {
     type: "doughnut",
-    data: { labels, datasets: [{ data: counts, backgroundColor: colors, borderWidth: 0 }] },
+    data: { labels, datasets: [{ data: customersCounts, backgroundColor: colors, borderWidth: 0 }] },
     options: {
       responsive: true,
       cutout: "62%",
@@ -64,7 +65,7 @@ function renderCharts(rows) {
 function renderTable(rows) {
   const body = document.getElementById("agentStatsRangeBody");
   if (!rows || rows.length === 0) {
-    body.innerHTML = `<tr><td colspan="3" class="text-center text-secondary py-4">${I18N.t("dashboard.agents.empty")}</td></tr>`;
+    body.innerHTML = `<tr><td colspan="4" class="text-center text-secondary py-4">${I18N.t("dashboard.agents.empty")}</td></tr>`;
     return;
   }
   const numFmt = new Intl.NumberFormat(I18N.lang === "ar" ? "ar-EG" : "en-US");
@@ -72,6 +73,7 @@ function renderTable(rows) {
     <tr>
       <td class="fw-semibold">${r.username}</td>
       <td>${numFmt.format(r.replies)}</td>
+      <td>${numFmt.format(r.customersReplied)}</td>
       <td>${r.percentage}%</td>
     </tr>`).join("");
 }
@@ -114,6 +116,7 @@ function exportToExcel() {
   const sheetRows = lastStatsResult.rows.map((r) => ({
     [I18N.t("dashboard.agents.agent")]: r.username,
     [I18N.t("agentStats.replies")]: r.replies,
+    [I18N.t("agentStats.customersReplied")]: r.customersReplied,
     [I18N.t("agentStats.share")]: `${r.percentage}%`,
   }));
   const ws = XLSX.utils.json_to_sheet(sheetRows);

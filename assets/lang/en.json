@@ -98,6 +98,7 @@
     "shareTitle": "Share of received messages",
     "tableTitle": "Breakdown",
     "replies": "Replies",
+    "customersReplied": "Customers replied to",
     "share": "% of messages received",
     "summary": "{received} messages received in this period — {coverage}% were replied to, across {agents} agent(s)."
   },

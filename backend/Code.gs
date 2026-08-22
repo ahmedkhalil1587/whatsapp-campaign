@@ -475,43 +475,63 @@ function buildAgentStatsRange_(startDate, endDate) {
   });
 
   var totalOutbound = inRange.filter(function (r) { return r.Direction === "out"; }).length;
+
   // "Received messages" for this metric means actual customer messages —
   // reaction pings (👍 etc.) aren't something an agent is expected to
   // reply to, so they're excluded from the denominator.
-  var totalInbound = inRange.filter(function (r) { return r.Direction !== "out" && r.Status !== "reaction"; }).length;
+  var inboundCustomers = {}; // set of mobile numbers that messaged in-range
+  inRange.forEach(function (r) {
+    if (r.Direction === "out" || r.Status === "reaction") return;
+    inboundCustomers[String(r.MobileNumber).trim()] = true;
+  });
+  var totalInbound = Object.keys(inboundCustomers).length;
 
-  var byAgent = {};
+  // Percentage is deliberately based on DISTINCT CUSTOMERS replied to,
+  // not raw reply message count — an agent often sends several messages
+  // per conversation (e.g. "checking now" then the actual answer), and
+  // counting each of those as a separate "reply" could push a single
+  // agent's share past 100% of the day's received messages, which isn't
+  // a meaningful number. Counting customers instead guarantees each
+  // agent's own percentage can never exceed 100%, and only counts a
+  // customer if they actually messaged in *this* range — replying to an
+  // older, unrelated conversation on the same day doesn't inflate it.
+  var byAgent = {}; // username -> { replies: count, customers: {mobile: true} }
   inRange.forEach(function (r) {
     if (r.Direction !== "out" || !r.AgentUsername) return;
     var name = String(r.AgentUsername).trim();
     if (!name) return;
-    if (!byAgent[name]) byAgent[name] = { username: name, replies: 0 };
+    if (!byAgent[name]) byAgent[name] = { username: name, replies: 0, customers: {} };
     byAgent[name].replies++;
+    var mobile = String(r.MobileNumber).trim();
+    if (inboundCustomers[mobile]) byAgent[name].customers[mobile] = true;
   });
 
   var result = Object.keys(byAgent).map(function (k) {
     var a = byAgent[k];
+    var customersReplied = Object.keys(a.customers).length;
     return {
       username: a.username,
-      replies: a.replies,
-      // Each agent's share of TOTAL RECEIVED customer messages in the
-      // range (not of total replies) — e.g. 100 messages came in, this
-      // agent replied to 20 of them → 20%. Note more than one agent can
-      // reply to the same customer message, so the percentages across
-      // agents can add up to more than 100%; that's expected, not a bug.
-      percentage: totalInbound > 0 ? Math.round((a.replies / totalInbound) * 1000) / 10 : 0,
+      replies: a.replies, // raw message count, shown for volume context
+      customersReplied: customersReplied, // distinct customers actually replied to (subset of totalInbound)
+      percentage: totalInbound > 0 ? Math.round((customersReplied / totalInbound) * 1000) / 10 : 0,
     };
   }).sort(function (a, b) { return b.replies - a.replies; });
 
-  var totalRepliesFromAgents = result.reduce(function (sum, a) { return sum + a.replies; }, 0);
+  // Overall coverage: how many of the day's customers got *some* reply
+  // from *some* agent — the "70% تم الرد عليها" headline number. Also
+  // capped at totalInbound by construction (a customer either got
+  // replied to or didn't, counted once regardless of how many agents touched it).
+  var repliedCustomersOverall = {};
+  Object.keys(byAgent).forEach(function (k) {
+    Object.keys(byAgent[k].customers).forEach(function (mobile) { repliedCustomersOverall[mobile] = true; });
+  });
+  var coveredCount = Object.keys(repliedCustomersOverall).length;
 
   return {
     rows: result,
     totalOutbound: totalOutbound,
     totalInbound: totalInbound,
-    // Overall coverage: what share of all received messages got *some*
-    // reply from *some* agent — the "70% تم الرد عليها" headline number.
-    coveragePercentage: totalInbound > 0 ? Math.round((totalRepliesFromAgents / totalInbound) * 1000) / 10 : 0,
+    coveragePercentage: totalInbound > 0 ? Math.round((coveredCount / totalInbound) * 1000) / 10 : 0,
     rangeStart: startDate || "",
     rangeEnd: endDate || "",
   };
