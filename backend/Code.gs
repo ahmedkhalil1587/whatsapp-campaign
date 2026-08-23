@@ -86,7 +86,7 @@ function handleRequest_(e) {
 // not just hidden in the UI.
 
 var PUBLIC_ACTIONS_ = ["auth.login", "auth.register", "auth.verify"];
-var AGENT_ALLOWED_ACTIONS_ = ["doctors.list", "doctors.create", "doctors.update", "doctors.delete", "doctors.bulkImport", "inbox.list", "inbox.thread", "inbox.send", "inbox.sendMedia", "inbox.markRead", "inbox.startNewConversation", "inbox.pin", "inbox.unpin", "media.upload"];
+var AGENT_ALLOWED_ACTIONS_ = ["doctors.list", "doctors.create", "doctors.update", "doctors.delete", "doctors.bulkImport", "inbox.list", "inbox.thread", "inbox.send", "inbox.sendMedia", "inbox.markRead", "inbox.startNewConversation", "inbox.sendQrSeha", "inbox.pin", "inbox.unpin", "media.upload"];
 var SESSION_TTL_SECONDS_ = 21600; // 6 hours; slides forward on each authorized request
 
 function generateToken_(username, role) {
@@ -154,6 +154,7 @@ function routeAction_(action, body) {
     case "inbox.sendMedia":    return sendInboxMedia_(body.mobile, body.mediaUrl, body.mediaType, body.caption, body.filename, session.username);
     case "inbox.markRead":    return { ok: true, readAt: markConversationRead_(body.mobile, body.timestamp, session.username) };
     case "inbox.startNewConversation": return startNewConversation_(body.mobile, session.username);
+    case "inbox.sendQrSeha": return sendQrSehaConversation_(body.mobile, session.username);
     case "inbox.pin":         return pinConversation_(session.username, body.mobile);
     case "inbox.unpin":       return unpinConversation_(session.username, body.mobile);
 
@@ -1264,6 +1265,42 @@ function startNewConversation_(mobile, agentUsername) {
     CustomerID: doctor ? doctor.ID : "",
     Direction: "out",
     Body: NEW_CONVERSATION_TEMPLATE_BODY_,
+    WaMessageId: waMessageId || "",
+    Status: "sent",
+    AgentUsername: agentUsername || "",
+  });
+  markConversationRead_(cleanMobile, new Date().toISOString(), agentUsername);
+  return { ok: true, mobile: cleanMobile };
+}
+
+// ---------------------------------------------------------------
+// Second "brand-new conversation" button, for reception staff: sends the
+// Seha-platform QR code image via its own separate pre-approved template
+// (has an image header, unlike NEW_CONVERSATION_TEMPLATE_NAME_ above).
+// ---------------------------------------------------------------
+
+var QR_SEHA_TEMPLATE_NAME_ = "qr_seha";
+var QR_SEHA_TEMPLATE_LANG_ = "ar_EG";
+var QR_SEHA_IMAGE_URL_ = "https://raw.githubusercontent.com/ahmedkhalil1587/whatsapp-campaign/main/assets/img/QR_seha.jpg";
+// Friendly placeholder for our own chat log — the template's real approved
+// wording lives on Meta's side, we just need something readable here.
+var QR_SEHA_TEMPLATE_BODY_ = "📷 تم إرسال رمز QR لمنصة صحة";
+
+function sendQrSehaConversation_(mobile, agentUsername) {
+  var cleanMobile = String(mobile || "").replace(/[^0-9]/g, "");
+  if (!cleanMobile) return { ok: false, error: "رقم الجوال غير صالح." };
+
+  var waMessageId = sendWhatsAppTemplateMessage_(cleanMobile, QR_SEHA_TEMPLATE_NAME_, QR_SEHA_TEMPLATE_LANG_, [], null, QR_SEHA_IMAGE_URL_);
+
+  var doctors = sheetToObjects_("Doctors");
+  var doctor = doctors.find(function (d) { return normalizeMobile_(d.Mobile) === normalizeMobile_(cleanMobile); });
+  appendRow_("Inbox", {
+    Timestamp: new Date().toISOString(),
+    MobileNumber: cleanMobile,
+    CustomerID: doctor ? doctor.ID : "",
+    Direction: "out",
+    Body: QR_SEHA_TEMPLATE_BODY_,
+    MediaUrl: QR_SEHA_IMAGE_URL_, // so the QR image itself shows up in the chat log, not just placeholder text
     WaMessageId: waMessageId || "",
     Status: "sent",
     AgentUsername: agentUsername || "",

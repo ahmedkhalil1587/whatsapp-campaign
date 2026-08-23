@@ -346,38 +346,57 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   let newConversationModal;
-  document.getElementById("newConversationBtn").addEventListener("click", () => {
-    if (!newConversationModal) newConversationModal = new bootstrap.Modal(document.getElementById("newConversationModal"));
-    document.getElementById("newConversationMobile").value = "";
-    document.getElementById("newConversationError").classList.add("d-none");
-    newConversationModal.show();
-    setTimeout(() => document.getElementById("newConversationMobile").focus(), 200);
+  let qrSehaModal;
+  /** Wires up a "type a mobile number → send a fixed pre-approved
+   * template" flow. Both "start new conversation" and "send Seha QR"
+   * are the exact same interaction, just against a different backend
+   * action and modal — this avoids duplicating the logic twice. */
+  function wireStartConversationModal({ triggerBtnId, modalId, mobileInputId, errorId, sendBtnId, apiCall, sentMessageKey }) {
+    let modalInstance;
+    document.getElementById(triggerBtnId).addEventListener("click", () => {
+      if (!modalInstance) modalInstance = new bootstrap.Modal(document.getElementById(modalId));
+      document.getElementById(mobileInputId).value = "";
+      document.getElementById(errorId).classList.add("d-none");
+      modalInstance.show();
+      setTimeout(() => document.getElementById(mobileInputId).focus(), 200);
+    });
+    document.getElementById(sendBtnId).addEventListener("click", async () => {
+      const input = document.getElementById(mobileInputId);
+      const errEl = document.getElementById(errorId);
+      const btn = document.getElementById(sendBtnId);
+      const mobile = input.value.replace(/[^0-9]/g, "");
+      errEl.classList.add("d-none");
+      if (!mobile) {
+        errEl.textContent = I18N.t("inbox.newConversation.invalidMobile");
+        errEl.classList.remove("d-none");
+        return;
+      }
+      if (!MCApi.isConfigured()) { MCApp.toast(I18N.t("common.error"), "error"); return; }
+      btn.disabled = true;
+      try {
+        await apiCall(mobile);
+        modalInstance.hide();
+        MCApp.toast(I18N.t(sentMessageKey), "success");
+        await loadConversations(true);
+        await loadThread(mobile, true);
+      } catch (err) {
+        errEl.textContent = err.message || I18N.t("common.error");
+        errEl.classList.remove("d-none");
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  }
+
+  wireStartConversationModal({
+    triggerBtnId: "newConversationBtn", modalId: "newConversationModal",
+    mobileInputId: "newConversationMobile", errorId: "newConversationError", sendBtnId: "newConversationSendBtn",
+    apiCall: (mobile) => MCApi.Inbox.startNewConversation(mobile), sentMessageKey: "inbox.newConversation.sent",
   });
-  document.getElementById("newConversationSendBtn").addEventListener("click", async () => {
-    const input = document.getElementById("newConversationMobile");
-    const errEl = document.getElementById("newConversationError");
-    const btn = document.getElementById("newConversationSendBtn");
-    const mobile = input.value.replace(/[^0-9]/g, "");
-    errEl.classList.add("d-none");
-    if (!mobile) {
-      errEl.textContent = I18N.t("inbox.newConversation.invalidMobile");
-      errEl.classList.remove("d-none");
-      return;
-    }
-    if (!MCApi.isConfigured()) { MCApp.toast(I18N.t("common.error"), "error"); return; }
-    btn.disabled = true;
-    try {
-      await MCApi.Inbox.startNewConversation(mobile);
-      newConversationModal.hide();
-      MCApp.toast(I18N.t("inbox.newConversation.sent"), "success");
-      await loadConversations(true);
-      await loadThread(mobile, true);
-    } catch (err) {
-      errEl.textContent = err.message || I18N.t("common.error");
-      errEl.classList.remove("d-none");
-    } finally {
-      btn.disabled = false;
-    }
+  wireStartConversationModal({
+    triggerBtnId: "qrSehaBtn", modalId: "qrSehaModal",
+    mobileInputId: "qrSehaMobile", errorId: "qrSehaError", sendBtnId: "qrSehaSendBtn",
+    apiCall: (mobile) => MCApi.Inbox.sendQrSeha(mobile), sentMessageKey: "inbox.qrSeha.sent",
   });
 
   // Live-updates so new incoming messages show up without a manual refresh.

@@ -361,6 +361,11 @@
       "send": "Send",
       "sent": "Message sent."
     },
+    "qrSeha": {
+      "title": "Send Seha QR code",
+      "explain": "Sends a pre-approved WhatsApp template with the Seha platform's QR code image, so it reaches the patient even if they've never messaged this number before.",
+      "sent": "QR code sent."
+    },
     "refresh": "Refresh",
     "filterAll": "All",
     "filterUnread": "Unread",
