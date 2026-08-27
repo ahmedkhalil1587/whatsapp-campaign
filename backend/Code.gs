@@ -86,7 +86,7 @@ function handleRequest_(e) {
 // not just hidden in the UI.
 
 var PUBLIC_ACTIONS_ = ["auth.login", "auth.register", "auth.verify"];
-var AGENT_ALLOWED_ACTIONS_ = ["doctors.list", "doctors.create", "doctors.update", "doctors.delete", "doctors.bulkImport", "inbox.list", "inbox.thread", "inbox.send", "inbox.sendMedia", "inbox.markRead", "inbox.startNewConversation", "inbox.sendQrSeha", "inbox.pin", "inbox.unpin", "media.upload"];
+var AGENT_ALLOWED_ACTIONS_ = ["doctors.list", "doctors.create", "doctors.update", "doctors.delete", "doctors.bulkImport", "inbox.list", "inbox.thread", "inbox.send", "inbox.sendMedia", "inbox.markRead", "inbox.startNewConversation", "inbox.sendQrSeha", "inbox.sendReportRequest", "inbox.pin", "inbox.unpin", "media.upload"];
 var SESSION_TTL_SECONDS_ = 21600; // 6 hours; slides forward on each authorized request
 
 function generateToken_(username, role) {
@@ -155,6 +155,7 @@ function routeAction_(action, body) {
     case "inbox.markRead":    return { ok: true, readAt: markConversationRead_(body.mobile, body.timestamp, session.username) };
     case "inbox.startNewConversation": return startNewConversation_(body.mobile, session.username);
     case "inbox.sendQrSeha": return sendQrSehaConversation_(body.mobile, session.username);
+    case "inbox.sendReportRequest": return sendReportRequestConversation_(body.mobile, session.username);
     case "inbox.pin":         return pinConversation_(session.username, body.mobile);
     case "inbox.unpin":       return unpinConversation_(session.username, body.mobile);
 
@@ -1284,7 +1285,10 @@ var QR_SEHA_TEMPLATE_LANG_ = "ar_EG";
 var QR_SEHA_IMAGE_URL_ = "https://raw.githubusercontent.com/ahmedkhalil1587/whatsapp-campaign/main/assets/img/QR_seha.jpg";
 // Friendly placeholder for our own chat log — the template's real approved
 // wording lives on Meta's side, we just need something readable here.
-var QR_SEHA_TEMPLATE_BODY_ = "📷 تم إرسال رمز QR لمنصة صحة";
+// Mirrors the template's exact approved wording, purely so it shows up
+// correctly in our own Inbox chat log — we aren't sending this text
+// ourselves, it's baked into the already-approved template on Meta's side.
+var QR_SEHA_TEMPLATE_BODY_ = "مرفق QR للستجيل لرفع الاجازات المرضية على منصة صحتي\n\nللمزيد من الاستفسارات تواصل هاتفيا او واتس اب على الرقم الموحد:\n920014603";
 
 function sendQrSehaConversation_(mobile, agentUsername) {
   var cleanMobile = String(mobile || "").replace(/[^0-9]/g, "");
@@ -1301,6 +1305,41 @@ function sendQrSehaConversation_(mobile, agentUsername) {
     Direction: "out",
     Body: QR_SEHA_TEMPLATE_BODY_,
     MediaUrl: QR_SEHA_IMAGE_URL_, // so the QR image itself shows up in the chat log, not just placeholder text
+    WaMessageId: waMessageId || "",
+    Status: "sent",
+    AgentUsername: agentUsername || "",
+  });
+  markConversationRead_(cleanMobile, new Date().toISOString(), agentUsername);
+  return { ok: true, mobile: cleanMobile };
+}
+
+// ---------------------------------------------------------------
+// Third "brand-new conversation" button: requesting a patient's national
+// ID so staff can pull/send their medical reports or sick leave records.
+// Plain text template, no image.
+// ---------------------------------------------------------------
+
+var REPORT_REQ_TEMPLATE_NAME_ = "report_req";
+var REPORT_REQ_TEMPLATE_LANG_ = "ar_EG";
+// Mirrors the template's exact approved wording, purely so it shows up
+// correctly in our own Inbox chat log — we aren't sending this text
+// ourselves, it's baked into the already-approved template on Meta's side.
+var REPORT_REQ_TEMPLATE_BODY_ = "🖨️ لطلب ارسال التقارير الطبية أو الاجازات المرضية؛\nالرجاء ارسال رقم الهوية\nوشكرا 🌹\nلمزيد من المعلومات تواصل معنا عبر الواتس اب او الهاتف على الرقم الموحد:\n📞 920014603";
+
+function sendReportRequestConversation_(mobile, agentUsername) {
+  var cleanMobile = String(mobile || "").replace(/[^0-9]/g, "");
+  if (!cleanMobile) return { ok: false, error: "رقم الجوال غير صالح." };
+
+  var waMessageId = sendWhatsAppTemplateMessage_(cleanMobile, REPORT_REQ_TEMPLATE_NAME_, REPORT_REQ_TEMPLATE_LANG_, [], null, "");
+
+  var doctors = sheetToObjects_("Doctors");
+  var doctor = doctors.find(function (d) { return normalizeMobile_(d.Mobile) === normalizeMobile_(cleanMobile); });
+  appendRow_("Inbox", {
+    Timestamp: new Date().toISOString(),
+    MobileNumber: cleanMobile,
+    CustomerID: doctor ? doctor.ID : "",
+    Direction: "out",
+    Body: REPORT_REQ_TEMPLATE_BODY_,
     WaMessageId: waMessageId || "",
     Status: "sent",
     AgentUsername: agentUsername || "",

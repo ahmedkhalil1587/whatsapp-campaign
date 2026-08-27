@@ -137,6 +137,9 @@
               <button type="button" class="btn btn-outline-secondary btn-sm flex-shrink-0 d-flex align-items-center gap-1" id="qrSehaBtn" title="Send Seha QR">
                 <i class="bi bi-qr-code"></i>
               </button>
+              <button type="button" class="btn btn-outline-secondary btn-sm flex-shrink-0 d-flex align-items-center gap-1" id="reportReqBtn" title="Request medical report">
+                <i class="bi bi-file-earmark-medical"></i>
+              </button>
             </div>
           </div>
           <div class="conv-filter-bar btn-group btn-group-sm w-100 px-2 pb-2" role="group">
@@ -215,12 +218,35 @@
   </div>
 </div>
 
+<!-- Third "new conversation" flow: request a patient's national ID to
+     pull/send their medical reports or sick-leave records. -->
+<div class="modal fade" id="reportReqModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" data-i18n="inbox.reportReq.title">Request medical report</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small text-secondary" data-i18n="inbox.reportReq.explain">Sends a pre-approved WhatsApp template asking the patient for their national ID to look up their medical reports / sick leave, so it reaches them even if they've never messaged this number before.</p>
+        <label class="form-label small fw-semibold" data-i18n="inbox.newConversation.mobileLabel">Patient's mobile number</label>
+        <input type="tel" class="form-control" id="reportReqMobile" dir="ltr" placeholder="9665XXXXXXXX">
+        <div class="small text-danger mt-2 d-none" id="reportReqError"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">Cancel</button>
+        <button type="button" class="btn btn-mc-primary" id="reportReqSendBtn" data-i18n="inbox.newConversation.send">Send</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="assets/js/i18n.js"></script>
 <script src="assets/js/app.js"></script>
 <script src="assets/js/api.js?v=2"></script>
 <script src="assets/js/auth.js"></script>
-<script src="assets/js/inbox.js?v=15"></script>
+<script src="assets/js/inbox.js?v=16"></script>
 <script>
   MCAuth.guard();
   const session = MCAuth.getSession();

@@ -366,6 +366,11 @@
       "explain": "Sends a pre-approved WhatsApp template with the Seha platform's QR code image, so it reaches the patient even if they've never messaged this number before.",
       "sent": "QR code sent."
     },
+    "reportReq": {
+      "title": "Request medical report",
+      "explain": "Sends a pre-approved WhatsApp template asking the patient for their national ID to look up their medical reports / sick leave, so it reaches them even if they've never messaged this number before.",
+      "sent": "Report request sent."
+    },
     "refresh": "Refresh",
     "filterAll": "All",
     "filterUnread": "Unread",

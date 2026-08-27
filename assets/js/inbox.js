@@ -398,7 +398,11 @@ document.addEventListener("DOMContentLoaded", () => {
     mobileInputId: "qrSehaMobile", errorId: "qrSehaError", sendBtnId: "qrSehaSendBtn",
     apiCall: (mobile) => MCApi.Inbox.sendQrSeha(mobile), sentMessageKey: "inbox.qrSeha.sent",
   });
-
+  wireStartConversationModal({
+    triggerBtnId: "reportReqBtn", modalId: "reportReqModal",
+    mobileInputId: "reportReqMobile", errorId: "reportReqError", sendBtnId: "reportReqSendBtn",
+    apiCall: (mobile) => MCApi.Inbox.sendReportRequest(mobile), sentMessageKey: "inbox.reportReq.sent",
+  });
   // Live-updates so new incoming messages show up without a manual refresh.
   // Apps Script has a low concurrent-execution ceiling, so we poll at a
   // moderate interval (not too fast) and skip a cycle entirely if the

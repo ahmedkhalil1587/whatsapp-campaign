@@ -96,6 +96,7 @@ const MCApi = (() => {
     agentStatsRange: (startDate, endDate) => call("inbox.agentStatsRange", { startDate, endDate }),
     startNewConversation: (mobile) => call("inbox.startNewConversation", { mobile }),
     sendQrSeha: (mobile) => call("inbox.sendQrSeha", { mobile }),
+    sendReportRequest: (mobile) => call("inbox.sendReportRequest", { mobile }),
     pin: (mobile) => call("inbox.pin", { mobile }),
     unpin: (mobile) => call("inbox.unpin", { mobile }),
   };
