@@ -1154,7 +1154,18 @@ function getReadStateMap_() {
   if (!sheet) return {}; // sheet not created yet — treat everything as unread rather than erroring
   var rows = sheetToObjects_("InboxReadState");
   var map = {};
-  rows.forEach(function (r) { map[String(r.MobileNumber).trim()] = r; });
+  rows.forEach(function (r) {
+    var mobile = String(r.MobileNumber).trim();
+    // If duplicate rows exist for the same mobile (see markConversationRead_
+    // for why that could happen), keep whichever has the LATEST
+    // timestamp — not just whichever row happens to come last in the
+    // sheet — so a stray stale duplicate can't make a conversation look
+    // permanently unread.
+    var existing = map[mobile];
+    if (!existing || new Date(r.LastReadTimestamp) > new Date(existing.LastReadTimestamp)) {
+      map[mobile] = r;
+    }
+  });
   return map;
 }
 
@@ -1163,28 +1174,44 @@ function markConversationRead_(mobile, timestamp, username) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("InboxReadState");
   if (!sheet) return ""; // sheet not set up — silently no-op instead of throwing on every message open
   var readAt = timestamp || new Date().toISOString();
-  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  var mobileCol = headers.indexOf("MobileNumber");
-  var values = sheet.getDataRange().getValues();
-  for (var i = 1; i < values.length; i++) {
-    if (String(values[i][mobileCol]).trim() === String(mobile).trim()) {
-      var row = headers.map(function (h) {
-        if (h === "MobileNumber") return mobile;
-        if (h === "LastReadTimestamp") return readAt;
-        if (h === "LastReadBy") return username || "";
-        return values[i][headers.indexOf(h)];
-      });
-      sheet.getRange(i + 1, 1, 1, headers.length).setValues([row]);
-      return readAt;
-    }
+
+  // Concurrent requests (poll cycles, prefetch, multiple agents/devices)
+  // can otherwise each read the sheet before any of them has written
+  // back, all miss the existing row, and each append their own duplicate.
+  // A script lock makes the whole read-then-write atomic across
+  // simultaneous executions.
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+  } catch (err) {
+    return readAt; // couldn't get the lock in time — don't hang the request over a UI nicety
   }
-  sheet.appendRow(headers.map(function (h) {
-    if (h === "MobileNumber") return mobile;
-    if (h === "LastReadTimestamp") return readAt;
-    if (h === "LastReadBy") return username || "";
-    return "";
-  }));
-  return readAt;
+  try {
+    var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    var mobileCol = headers.indexOf("MobileNumber");
+    var values = sheet.getDataRange().getValues();
+    for (var i = 1; i < values.length; i++) {
+      if (String(values[i][mobileCol]).trim() === String(mobile).trim()) {
+        var row = headers.map(function (h) {
+          if (h === "MobileNumber") return mobile;
+          if (h === "LastReadTimestamp") return readAt;
+          if (h === "LastReadBy") return username || "";
+          return values[i][headers.indexOf(h)];
+        });
+        sheet.getRange(i + 1, 1, 1, headers.length).setValues([row]);
+        return readAt;
+      }
+    }
+    sheet.appendRow(headers.map(function (h) {
+      if (h === "MobileNumber") return mobile;
+      if (h === "LastReadTimestamp") return readAt;
+      if (h === "LastReadBy") return username || "";
+      return "";
+    }));
+    return readAt;
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /** Sends an image or document attachment to a customer from the Inbox chat, and logs it. */

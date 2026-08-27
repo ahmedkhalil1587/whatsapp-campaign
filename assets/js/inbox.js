@@ -78,8 +78,36 @@ async function loadConversations(preserveSelection = true) {
     allConversations = (res.rows || []).filter((c) => c && c.MobileNumber);
     renderConvList();
     if (preserveSelection && activeMobile) loadThread(activeMobile, false);
+    prefetchVisibleThreads();
   } catch (err) {
     renderConvList();
+  }
+}
+
+let prefetchInFlight = false;
+/** Quietly warms threadCache for the conversations at the top of the
+ * list, so opening one feels instant instead of waiting on Apps
+ * Script's ~1-3s round trip. One at a time (not in parallel) — we
+ * learned the hard way that hammering Apps Script with concurrent
+ * requests causes intermittent failures, so this deliberately trades
+ * a little prefetch speed for not overloading the backend. */
+async function prefetchVisibleThreads() {
+  if (prefetchInFlight) return;
+  prefetchInFlight = true;
+  try {
+    const candidates = allConversations.slice(0, 8).filter((c) => !threadCache[c.MobileNumber]);
+    for (const c of candidates) {
+      if (document.hidden) break; // don't bother warming caches for a tab nobody's looking at
+      try {
+        const res = await MCApi.Inbox.thread(c.MobileNumber);
+        threadCache[c.MobileNumber] = res.rows || [];
+      } catch (err) {
+        // Best-effort — a failed prefetch just means that one chat loads
+        // normally (with its own spinner) when actually opened.
+      }
+    }
+  } finally {
+    prefetchInFlight = false;
   }
 }
 
@@ -409,7 +437,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // previous one hasn't finished yet — overlapping requests were flooding
   // the backend and causing intermittent "حدث خطأ ما" failures.
   pollTimer = setInterval(async () => {
-    if (!MCApi.isConfigured() || document.hidden || pollInFlight) return;
+    if (!MCApi.isConfigured() || document.hidden || pollInFlight || prefetchInFlight) return;
     pollInFlight = true;
     try {
       await loadConversations(true);
