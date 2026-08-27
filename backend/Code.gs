@@ -1324,7 +1324,7 @@ var REPORT_REQ_TEMPLATE_LANG_ = "ar_EG";
 // Mirrors the template's exact approved wording, purely so it shows up
 // correctly in our own Inbox chat log — we aren't sending this text
 // ourselves, it's baked into the already-approved template on Meta's side.
-var REPORT_REQ_TEMPLATE_BODY_ = "🖨️ لطلب ارسال التقارير الطبية أو الاجازات المرضية؛\nالرجاء ارسال رقم الهوية\nوشكرا 🌹\nلمزيد من المعلومات تواصل معنا عبر الواتس اب او الهاتف على الرقم الموحد:\n📞 920014603";
+var REPORT_REQ_TEMPLATE_BODY_ = "🖨️ لطلب ارسال التقارير الطبية أو الاجازات المرضية؛\nالرجاء ارسال:\n1- التقرير المطلوب (اجازة مرضية/تقريرطبي/نتيجة مختبر او اشعه)\n2- رقم الهوية/الاقامة\nوشكرا 🌹\nلمزيد من المعلومات تواصل معنا عبر الواتس اب او الهاتف على الرقم الموحد:\n📞 920014603";
 
 function sendReportRequestConversation_(mobile, agentUsername) {
   var cleanMobile = String(mobile || "").replace(/[^0-9]/g, "");
