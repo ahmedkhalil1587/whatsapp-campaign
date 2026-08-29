@@ -86,7 +86,7 @@ function handleRequest_(e) {
 // not just hidden in the UI.
 
 var PUBLIC_ACTIONS_ = ["auth.login", "auth.register", "auth.verify"];
-var AGENT_ALLOWED_ACTIONS_ = ["doctors.list", "doctors.create", "doctors.update", "doctors.delete", "doctors.bulkImport", "inbox.list", "inbox.thread", "inbox.send", "inbox.sendMedia", "inbox.markRead", "inbox.startNewConversation", "inbox.sendQrSeha", "inbox.sendReportRequest", "inbox.pin", "inbox.unpin", "media.upload"];
+var AGENT_ALLOWED_ACTIONS_ = ["doctors.list", "doctors.create", "doctors.update", "doctors.delete", "doctors.bulkImport", "inbox.list", "inbox.thread", "inbox.send", "inbox.sendMedia", "inbox.markRead", "inbox.startNewConversation", "inbox.sendQrSeha", "inbox.sendReportRequest", "inbox.pin", "inbox.unpin", "inbox.search", "media.upload"];
 var SESSION_TTL_SECONDS_ = 21600; // 6 hours; slides forward on each authorized request
 
 function generateToken_(username, role) {
@@ -158,6 +158,7 @@ function routeAction_(action, body) {
     case "inbox.sendReportRequest": return sendReportRequestConversation_(body.mobile, session.username);
     case "inbox.pin":         return pinConversation_(session.username, body.mobile);
     case "inbox.unpin":       return unpinConversation_(session.username, body.mobile);
+    case "inbox.search":      return { ok: true, rows: searchInboxMessages_(body.query) };
 
     // Admin-only (not in AGENT_ALLOWED_ACTIONS_ — this is for evaluating agents, not for agents themselves).
     case "inbox.agentStatsRange": return { ok: true, stats: buildAgentStatsRange_(body.startDate, body.endDate) };
@@ -1050,6 +1051,41 @@ function fetchAndStoreIncomingMedia_(mediaId, mimeType) {
 }
 
 /** Returns one row per conversation (most recent message per mobile number), newest first. */
+/**
+ * Full-text search across every message body in the Inbox sheet, across
+ * ALL conversations — not just the last-message preview the sidebar
+ * list search covers. Used for things like "who asked about X report"
+ * without having to remember or open the right conversation first.
+ * Case-insensitive substring match; capped at 50 most-recent hits so a
+ * broad query can't return an unbounded, slow-to-render result set.
+ */
+function searchInboxMessages_(query) {
+  var q = String(query || "").trim().toLowerCase();
+  if (q.length < 2) return []; // too short to be a useful search, and avoids scanning on every keystroke
+
+  var rows = sheetToObjects_("Inbox");
+  var doctors = sheetToObjects_("Doctors");
+  var doctorByMobile = {};
+  doctors.forEach(function (d) { doctorByMobile[normalizeMobile_(d.Mobile)] = d; });
+
+  var matches = rows.filter(function (r) {
+    return r.Body && String(r.Body).toLowerCase().indexOf(q) !== -1;
+  });
+  matches.sort(function (a, b) { return new Date(b.Timestamp) - new Date(a.Timestamp); });
+
+  return matches.slice(0, 50).map(function (r) {
+    var mobile = String(r.MobileNumber).trim();
+    var doctor = doctorByMobile[normalizeMobile_(mobile)];
+    return {
+      MobileNumber: mobile,
+      CustomerName: doctor ? doctor.Name : "",
+      Body: r.Body,
+      Timestamp: r.Timestamp,
+      Direction: r.Direction,
+    };
+  });
+}
+
 function buildInboxConversations_(currentUsername) {
   var rows = sheetToObjects_("Inbox");
   var doctors = sheetToObjects_("Doctors");

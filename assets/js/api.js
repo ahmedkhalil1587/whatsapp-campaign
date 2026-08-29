@@ -97,6 +97,7 @@ const MCApi = (() => {
     startNewConversation: (mobile) => call("inbox.startNewConversation", { mobile }),
     sendQrSeha: (mobile) => call("inbox.sendQrSeha", { mobile }),
     sendReportRequest: (mobile) => call("inbox.sendReportRequest", { mobile }),
+    search: (query) => call("inbox.search", { query }),
     pin: (mobile) => call("inbox.pin", { mobile }),
     unpin: (mobile) => call("inbox.unpin", { mobile }),
   };

@@ -111,6 +111,91 @@ async function prefetchVisibleThreads() {
   }
 }
 
+/** Escapes text for safe HTML insertion, then wraps every case-insensitive
+ * occurrence of `query` in <mark> so the match is visible in the snippet. */
+function highlightMatch(text, query) {
+  const escaped = escapeHtml(text);
+  const escapedQuery = escapeHtml(query).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (!escapedQuery) return escaped;
+  return escaped.replace(new RegExp(escapedQuery, "gi"), (m) => `<mark>${m}</mark>`);
+}
+
+/** Pulls a short window of text around the first match, so long messages
+ * don't blow up the result list — same idea as a search-engine snippet. */
+function snippetAround(text, query, radius = 60) {
+  const idx = text.toLowerCase().indexOf(query.toLowerCase());
+  if (idx === -1) return text.slice(0, radius * 2);
+  const start = Math.max(0, idx - radius);
+  const end = Math.min(text.length, idx + query.length + radius);
+  return (start > 0 ? "… " : "") + text.slice(start, end) + (end < text.length ? " …" : "");
+}
+
+let messageSearchDebounceTimer = null;
+function wireMessageSearch() {
+  const input = document.getElementById("messageSearchInput");
+  input.addEventListener("input", () => {
+    clearTimeout(messageSearchDebounceTimer);
+    const query = input.value.trim();
+    if (query.length < 2) {
+      exitMessageSearch();
+      return;
+    }
+    // Debounced so a fast typist doesn't fire a backend search on every
+    // keystroke — only once they pause briefly.
+    messageSearchDebounceTimer = setTimeout(() => runMessageSearch(query), 300);
+  });
+}
+
+function exitMessageSearch() {
+  document.getElementById("messageSearchResults").classList.add("d-none");
+  document.getElementById("convItems").classList.remove("d-none");
+  document.querySelector(".conv-filter-bar").classList.remove("d-none");
+}
+
+async function runMessageSearch(query) {
+  const resultsBox = document.getElementById("messageSearchResults");
+  document.getElementById("convItems").classList.add("d-none");
+  document.querySelector(".conv-filter-bar").classList.add("d-none");
+  resultsBox.classList.remove("d-none");
+  resultsBox.innerHTML = `<div class="p-3 text-center text-secondary small">${I18N.t("common.loading")}</div>`;
+
+  if (!MCApi.isConfigured()) { MCApp.toast(I18N.t("common.error"), "error"); return; }
+  try {
+    const res = await MCApi.Inbox.search(query);
+    // The person may have kept typing while this was in flight — drop a
+    // stale response instead of overwriting a newer, still-loading search.
+    if (document.getElementById("messageSearchInput").value.trim() !== query) return;
+    renderMessageSearchResults(res.rows || [], query);
+  } catch (err) {
+    resultsBox.innerHTML = `<div class="p-3 text-center text-danger small">${err.message || I18N.t("common.error")}</div>`;
+  }
+}
+
+function renderMessageSearchResults(rows, query) {
+  const resultsBox = document.getElementById("messageSearchResults");
+  if (rows.length === 0) {
+    resultsBox.innerHTML = `<div class="p-3 text-center text-secondary small">${I18N.t("inbox.messageSearchEmpty")}</div>`;
+    return;
+  }
+  const dateFmt = new Intl.DateTimeFormat(I18N.lang === "ar" ? "ar-EG" : "en-US", { dateStyle: "short", timeStyle: "short" });
+  resultsBox.innerHTML = rows.map((r) => `
+    <div class="msg-search-item" data-mobile="${escapeHtml(r.MobileNumber)}">
+      <div class="d-flex justify-content-between align-items-center">
+        <span class="msg-search-name">${escapeHtml(r.CustomerName) || I18N.t("inbox.unknownCustomer")}</span>
+        <span class="msg-search-time">${r.Timestamp ? dateFmt.format(new Date(r.Timestamp)) : ""}</span>
+      </div>
+      <div class="msg-search-snippet" dir="auto">${highlightMatch(snippetAround(String(r.Body || ""), query), query)}</div>
+    </div>`).join("");
+
+  resultsBox.querySelectorAll(".msg-search-item").forEach((el) => {
+    el.addEventListener("click", () => {
+      document.getElementById("messageSearchInput").value = "";
+      exitMessageSearch();
+      loadThread(el.getAttribute("data-mobile"), true);
+    });
+  });
+}
+
 function renderConvList() {
   const box = document.getElementById("convItems");
   const q = document.getElementById("convSearch").value.trim().toLowerCase();
@@ -348,6 +433,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setTimeout(() => loadConversations(false), 60);
 
   document.getElementById("convSearch").addEventListener("input", renderConvList);
+  wireMessageSearch();
   document.querySelectorAll(".conv-filter-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       convFilter = btn.getAttribute("data-filter");

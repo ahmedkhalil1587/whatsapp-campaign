@@ -345,6 +345,8 @@
     "subtitle": "Conversations with customers who messaged you directly.",
     "notConnected": "Connect your backend in Settings first to manage real data.",
     "searchPlaceholder": "Search conversations...",
+    "messageSearchPlaceholder": "Search inside all messages...",
+    "messageSearchEmpty": "No matches found in any conversation.",
     "empty": "No conversations yet. They'll appear here as soon as a customer messages you.",
     "noThreadSelected": "Select a conversation on the left to view it.",
     "typeMessage": "Type a reply...",
