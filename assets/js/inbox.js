@@ -189,8 +189,9 @@ function renderMessageSearchResults(rows, query) {
 
   resultsBox.querySelectorAll(".msg-search-item").forEach((el) => {
     el.addEventListener("click", () => {
-      document.getElementById("messageSearchInput").value = "";
-      exitMessageSearch();
+      // Keep the search box and results as-is (like WhatsApp) — only
+      // navigate to the chat. The person clears the box themselves when
+      // they're done, and the normal list comes back at that point.
       loadThread(el.getAttribute("data-mobile"), true);
     });
   });
