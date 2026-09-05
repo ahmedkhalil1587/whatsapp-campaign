@@ -582,7 +582,15 @@ function uploadMedia_(filename, mimeType, base64) {
   var blob = Utilities.newBlob(bytes, mimeType || "application/octet-stream", filename);
   var file = folder.createFile(blob);
   file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-  var url = "https://drive.google.com/uc?export=download&id=" + file.getId();
+  // Drive's download URL has no file extension in it (just an id), so
+  // anything trying to guess "is this an image or a video?" from the URL
+  // alone (see guessMediaTypeFromUrl_) has nothing to go on — tack the
+  // real extension on as a harmless query param purely as a hint for our
+  // own code; WhatsApp/browsers ignore unknown query params and still
+  // fetch the file normally.
+  var extMatch = String(filename).match(/\.([a-zA-Z0-9]+)$/);
+  var extHint = extMatch ? "&mc_ext=" + extMatch[1].toLowerCase() : "";
+  var url = "https://drive.google.com/uc?export=download&id=" + file.getId() + extHint;
   return { ok: true, url: url, fileId: file.getId(), name: file.getName() };
 }
 
@@ -631,9 +639,17 @@ function callWhatsAppApi_(payload) {
  * field needed. Defaults to "image" when the extension is unrecognized
  * (covers the common case and matches the old hardcoded behavior). */
 function guessMediaTypeFromUrl_(url) {
-  var clean = String(url || "").split("?")[0].toLowerCase();
-  if (/\.(mp4|3gp|mov|m4v)$/.test(clean)) return "video";
-  if (/\.(pdf|docx?|xlsx?|pptx?)$/.test(clean)) return "document";
+  var str = String(url || "");
+  // Prefer the explicit hint we attach ourselves for Drive links (which
+  // otherwise have no file extension at all) — see uploadMedia_.
+  var hintMatch = str.match(/[?&]mc_ext=([a-zA-Z0-9]+)/);
+  var ext = hintMatch ? hintMatch[1].toLowerCase() : "";
+  if (!ext) {
+    var pathMatch = str.split("?")[0].toLowerCase().match(/\.([a-z0-9]+)$/);
+    ext = pathMatch ? pathMatch[1] : "";
+  }
+  if (/^(mp4|3gp|mov|m4v)$/.test(ext)) return "video";
+  if (/^(pdf|docx?|xlsx?|pptx?)$/.test(ext)) return "document";
   return "image";
 }
 
