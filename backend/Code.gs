@@ -624,14 +624,27 @@ function callWhatsAppApi_(payload) {
 }
 
 /** Free-form text or single-image message — only deliverable within the 24h customer service window. */
+/** Guesses whether a media URL is an image, video, or document from its
+ * file extension, so campaigns can just paste a link into the same
+ * "attachment" field they've always used and have it sent as the right
+ * WhatsApp message/header type automatically — no separate "video URL"
+ * field needed. Defaults to "image" when the extension is unrecognized
+ * (covers the common case and matches the old hardcoded behavior). */
+function guessMediaTypeFromUrl_(url) {
+  var clean = String(url || "").split("?")[0].toLowerCase();
+  if (/\.(mp4|3gp|mov|m4v)$/.test(clean)) return "video";
+  if (/\.(pdf|docx?|xlsx?|pptx?)$/.test(clean)) return "document";
+  return "image";
+}
+
 function sendWhatsAppMessage_(toNumber, bodyText, mediaUrl) {
   var payload = {
     messaging_product: "whatsapp",
     to: toNumber,
-    type: mediaUrl ? "image" : "text",
+    type: mediaUrl ? guessMediaTypeFromUrl_(mediaUrl) : "text",
   };
   if (mediaUrl) {
-    payload.image = { link: mediaUrl, caption: bodyText };
+    payload[payload.type] = { link: mediaUrl, caption: bodyText };
   } else {
     payload.text = { body: bodyText };
   }
@@ -654,8 +667,11 @@ function sendWhatsAppMessage_(toNumber, bodyText, mediaUrl) {
  * instead of {{1}}), each parameter is tagged with parameter_name so Meta
  * can match it correctly — this is required for templates built with named
  * variables, and must match the exact name registered in WhatsApp Manager.
- * headerImageUrl is only needed if the approved template has an Image
- * header component.
+ * headerImageUrl is only needed if the approved template has a media
+ * header (image, video, or document) — the type is auto-detected from
+ * the URL's file extension (see guessMediaTypeFromUrl_), so a video
+ * template header works by just passing the same param, no separate
+ * "header type" argument needed.
  */
 function sendWhatsAppTemplateMessage_(toNumber, templateName, languageCode, paramValues, paramNames, headerImageUrl) {
   var payload = {
@@ -669,9 +685,12 @@ function sendWhatsAppTemplateMessage_(toNumber, templateName, languageCode, para
     },
   };
   if (headerImageUrl) {
+    var headerMediaType = guessMediaTypeFromUrl_(headerImageUrl);
+    var headerParam = { type: headerMediaType };
+    headerParam[headerMediaType] = { link: headerImageUrl };
     payload.template.components.push({
       type: "header",
-      parameters: [{ type: "image", image: { link: headerImageUrl } }],
+      parameters: [headerParam],
     });
   }
   if (paramValues && paramValues.length) {
@@ -1252,15 +1271,19 @@ function markConversationRead_(mobile, timestamp, username) {
 
 /** Sends an image or document attachment to a customer from the Inbox chat, and logs it. */
 function sendInboxMedia_(mobile, mediaUrl, mediaType, caption, filename, agentUsername) {
+  // Respect an explicit "document" choice from the file picker, but
+  // otherwise auto-detect (so an attached video gets sent as a video,
+  // not silently mislabeled as an image).
+  var resolvedType = mediaType === "document" ? "document" : guessMediaTypeFromUrl_(mediaUrl);
   var payload = {
     messaging_product: "whatsapp",
     to: mobile,
-    type: mediaType === "document" ? "document" : "image",
+    type: resolvedType,
   };
-  if (mediaType === "document") {
+  if (resolvedType === "document") {
     payload.document = { link: mediaUrl, caption: caption || "", filename: filename || "file" };
   } else {
-    payload.image = { link: mediaUrl, caption: caption || "" };
+    payload[resolvedType] = { link: mediaUrl, caption: caption || "" };
   }
   var waMessageId = callWhatsAppApi_(payload);
 
