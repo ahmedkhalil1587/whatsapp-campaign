@@ -403,18 +403,15 @@ async function handleRecipientListUpload(file) {
     const matchedIds = mapped.filter((r) => existingByMobile.has(normalizeMobile(r.Mobile))).map((r) => String(existingByMobile.get(normalizeMobile(r.Mobile)).ID));
 
     if (toCreate.length > 0) {
-      // Sent in chunks instead of one giant request — a single Apps
-      // Script call carrying 1000+ new records in one go is more likely
-      // to time out or fail outright, taking the whole import down with
-      // it; a chunk failing here only means that chunk's people won't be
-      // auto-selected (they can still be added individually), not the
-      // entire upload.
-      const CHUNK_SIZE = 300;
-      for (let i = 0; i < toCreate.length; i += CHUNK_SIZE) {
-        const chunk = toCreate.slice(i, i + CHUNK_SIZE);
-        statusEl.textContent = t("campaigns.uploadingProgress", { done: Math.min(i + CHUNK_SIZE, toCreate.length), total: toCreate.length });
-        await MCApi.Doctors.bulkImport(chunk);
-      }
+      // One single request, like the original working version — chunking
+      // this into several sequential round trips (an earlier "fix" here)
+      // actually made things worse: it stretched the whole operation out
+      // long enough to hit the session's expiry mid-upload for large
+      // lists, a problem that never happened with one bulk call even at
+      // 6000+ recipients. A single Sheets range write is efficient
+      // regardless of row count, so there's no real benefit to splitting
+      // it up — only more round trips and more chances to fail partway.
+      await MCApi.Doctors.bulkImport(toCreate);
     }
 
     // Reload the customer list so newly-created rows get real IDs, then match again.
