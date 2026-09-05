@@ -239,6 +239,7 @@
     "recipientsUploadBtn": "رفع ملف إكسل",
     "recipientsUploadHint": "نفس أعمدة ملف استيراد العملاء (Name, Mobile...). العملاء الموجودين بيتطابقوا برقم الموبايل، والجدد بيتضافوا تلقائيًا.",
     "recipientsUploadDone": "تم تطابق {matched} عميل موجود، وإضافة {added} عميل جديد.",
+    "uploadingProgress": "جارٍ إضافة العملاء الجدد ({done} من {total})...",
     "recipientsUploadError": "تعذّرت قراءة الملف. تأكد إنه ملف إكسل (.xlsx) صحيح.",
     "recipientsSearchPlaceholder": "ابحث عن عملاء لإضافتهم...",
     "recipientsSelectedCount": "تم تحديد {n}",

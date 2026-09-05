@@ -353,12 +353,18 @@ async function handleRecipientListUpload(file) {
   statusEl.classList.remove("d-none", "text-danger", "text-success");
   statusEl.textContent = I18N.t("campaigns.uploading");
 
+  // Parsing the file itself is the ONLY step that means "this isn't a
+  // valid Excel file" — everything after that is a normal network/backend
+  // call, and lumping their errors under the same "bad file" message
+  // hides what's actually wrong (e.g. a slow/failed import) behind a
+  // misleading diagnosis.
+  let mapped;
   try {
     const buffer = await file.arrayBuffer();
     const wb = XLSX.read(buffer, { type: "array" });
     const sheet = wb.Sheets[wb.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-    const mapped = rows.map((r) => ({
+    mapped = rows.map((r) => ({
       Name: r.Name || r.name || "",
       Mobile: String(r.Mobile || r.mobile || "").trim(),
       Specialty: r.Specialty || r.specialty || "",
@@ -368,9 +374,15 @@ async function handleRecipientListUpload(file) {
       Status: r.Status || r.status || "Active",
       Notes: r.Notes || r.notes || "",
     })).filter((r) => r.Name && r.Mobile);
-
     if (mapped.length === 0) throw new Error("empty");
+  } catch (err) {
+    statusEl.classList.add("text-danger");
+    statusEl.textContent = I18N.t("campaigns.recipientsUploadError");
+    btn.disabled = false;
+    return;
+  }
 
+  try {
     // Refresh the customer list from the server before matching — the
     // in-memory copy is whatever was loaded when this page was first
     // opened, and if it's been open a while (or customers were added
@@ -391,7 +403,18 @@ async function handleRecipientListUpload(file) {
     const matchedIds = mapped.filter((r) => existingByMobile.has(normalizeMobile(r.Mobile))).map((r) => String(existingByMobile.get(normalizeMobile(r.Mobile)).ID));
 
     if (toCreate.length > 0) {
-      await MCApi.Doctors.bulkImport(toCreate);
+      // Sent in chunks instead of one giant request — a single Apps
+      // Script call carrying 1000+ new records in one go is more likely
+      // to time out or fail outright, taking the whole import down with
+      // it; a chunk failing here only means that chunk's people won't be
+      // auto-selected (they can still be added individually), not the
+      // entire upload.
+      const CHUNK_SIZE = 300;
+      for (let i = 0; i < toCreate.length; i += CHUNK_SIZE) {
+        const chunk = toCreate.slice(i, i + CHUNK_SIZE);
+        statusEl.textContent = t("campaigns.uploadingProgress", { done: Math.min(i + CHUNK_SIZE, toCreate.length), total: toCreate.length });
+        await MCApi.Doctors.bulkImport(chunk);
+      }
     }
 
     // Reload the customer list so newly-created rows get real IDs, then match again.
@@ -409,11 +432,14 @@ async function handleRecipientListUpload(file) {
     renderRecipientList();
     updatePreview();
 
+    statusEl.classList.remove("text-danger");
     statusEl.classList.add("text-success");
     statusEl.textContent = t("campaigns.recipientsUploadDone", { matched: matchedIds.length, added: toCreate.length });
   } catch (err) {
+    // A real, specific error from here on — show it as-is instead of
+    // the generic "bad file" message, since the file already parsed fine.
     statusEl.classList.add("text-danger");
-    statusEl.textContent = I18N.t("campaigns.recipientsUploadError");
+    statusEl.textContent = err.message || I18N.t("campaigns.recipientsUploadError");
   } finally {
     btn.disabled = false;
   }
