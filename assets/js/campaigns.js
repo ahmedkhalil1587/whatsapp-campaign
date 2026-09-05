@@ -371,6 +371,15 @@ async function handleRecipientListUpload(file) {
 
     if (mapped.length === 0) throw new Error("empty");
 
+    // Refresh the customer list from the server before matching — the
+    // in-memory copy is whatever was loaded when this page was first
+    // opened, and if it's been open a while (or customers were added
+    // through another tab/import since then), matching against that
+    // stale snapshot makes already-existing people look "new" and fail
+    // to get auto-selected.
+    const freshRes = await MCApi.Doctors.list();
+    allCustomers = freshRes.rows || [];
+
     // Match against the customers we already have. Compare digits only
     // (strip "+", spaces, dashes, etc.) instead of the raw string — the
     // same person can appear as "+966545084980" in one place and
