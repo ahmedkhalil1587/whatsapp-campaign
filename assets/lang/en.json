@@ -379,6 +379,7 @@
     "filterUnread": "Unread",
     "filterReplied": "Read",
     "filterRead": "Read",
+    "filterSent": "Sent",
     "markRead": "Mark as read",
     "pin": "Pin conversation",
     "unpin": "Unpin"

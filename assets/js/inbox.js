@@ -22,11 +22,22 @@ let threadCache = {}; // mobile -> last-known rows[], so re-opening a chat is in
 // "unread" whenever its latest message is newer than that read cursor.
 function isConvUnread(c) {
   if (!c.LastTimestamp) return false;
+  // If the last activity was something WE sent (agent reply, campaign
+  // blast, "start new conversation" template, etc.), it can never be
+  // "unread" — that status only makes sense for something the customer
+  // sent that nobody's looked at yet.
+  if (c.LastDirection === "out") return false;
   if (!c.LastReadTimestamp) return true;
   const last = new Date(c.LastTimestamp).getTime();
   const read = new Date(c.LastReadTimestamp).getTime();
   if (isNaN(last) || isNaN(read)) return true;
   return last > read;
+}
+/** True when the most recent activity in this conversation was
+ * something WE sent — a distinct "Sent" bucket that has nothing to do
+ * with read/unread state. */
+function isConvSent(c) {
+  return c.LastDirection === "out";
 }
 /** Tells the backend this conversation has been seen, and updates our
  * local copy immediately so the UI reflects it without waiting on a
@@ -204,7 +215,15 @@ function renderConvList() {
     .filter((c) => !q
       || String(c.CustomerName || "").toLowerCase().includes(q)
       || String(c.MobileNumber || "").includes(q))
-    .filter((c) => convFilter === "all" || (convFilter === "unread" ? isConvUnread(c) : !isConvUnread(c)))
+    .filter((c) => {
+      if (convFilter === "all") return true;
+      if (convFilter === "unread") return isConvUnread(c);
+      if (convFilter === "sent") return isConvSent(c);
+      // "replied"/read tab: a conversation the customer sent that's
+      // already been read — sent-by-us conversations belong in their
+      // own "Sent" tab, not lumped in here as if they were "read".
+      return !isConvUnread(c) && !isConvSent(c);
+    })
     // Pinned conversations always float to the top (this user's own pins
     // only), most-recently-active first within each group.
     .sort((a, b) => (Number(!!b.Pinned) - Number(!!a.Pinned)) || (new Date(b.LastTimestamp) - new Date(a.LastTimestamp)));
