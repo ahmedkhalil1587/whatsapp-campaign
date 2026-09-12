@@ -149,7 +149,7 @@ function routeAction_(action, body) {
     case "history.list":      return { ok: true, rows: buildHistoryRows_() };
 
     case "inbox.list":        return { ok: true, rows: buildInboxConversations_(session.username) };
-    case "inbox.thread":      return { ok: true, rows: sheetToObjects_("Inbox").filter(function (r) { return String(r.MobileNumber).trim() === String(body.mobile).trim(); }).sort(function (a, b) { return new Date(a.Timestamp) - new Date(b.Timestamp); }) };
+    case "inbox.thread":      return { ok: true, rows: getThreadRows_(body.mobile) };
     case "inbox.send":        return sendInboxReply_(body.mobile, body.text, session.username);
     case "inbox.sendMedia":    return sendInboxMedia_(body.mobile, body.mediaUrl, body.mediaType, body.caption, body.filename, session.username);
     case "inbox.markRead":    return { ok: true, readAt: markConversationRead_(body.mobile, body.timestamp, session.username) };
@@ -203,6 +203,11 @@ function appendRow_(name, data) {
   }
   var row = headers.map(function (h) { return data[h] !== undefined ? data[h] : ""; });
   sheet.appendRow(row);
+  // A new message just landed — don't make anyone wait out the
+  // conversation-list cache's TTL to see it (see buildInboxConversationsBase_).
+  if (name === "Inbox") {
+    try { CacheService.getScriptCache().remove(INBOX_CONV_CACHE_KEY_); } catch (err) { /* non-critical */ }
+  }
   return data;
 }
 
@@ -1121,13 +1126,28 @@ function searchInboxMessages_(query) {
   });
 }
 
-function buildInboxConversations_(currentUsername) {
+/**
+ * The expensive part of building the conversation list: scanning the
+ * entire (ever-growing) Inbox sheet to find each conversation's most
+ * recent message, joined with customer names. This is the same for
+ * every user (unlike read-state/pins, which are per-user), so it's
+ * cached for a few seconds — at thousands of messages, re-scanning the
+ * whole sheet on every 10-second poll from every open tab adds up fast.
+ * Cleared immediately by appendRow_ whenever a new Inbox row is written,
+ * so nobody waits out the cache TTL to see a message that just arrived.
+ */
+var INBOX_CONV_CACHE_KEY_ = "inbox_conv_base_v1";
+function buildInboxConversationsBase_() {
+  var cache = CacheService.getScriptCache();
+  var cached = cache.get(INBOX_CONV_CACHE_KEY_);
+  if (cached) {
+    try { return JSON.parse(cached); } catch (err) { /* fall through and recompute */ }
+  }
+
   var rows = sheetToObjects_("Inbox");
   var doctors = sheetToObjects_("Doctors");
   var doctorByMobile = {};
   doctors.forEach(function (d) { doctorByMobile[normalizeMobile_(d.Mobile)] = d; });
-  var readByMobile = getReadStateMap_();
-  var pinnedMobiles = getPinnedMobilesForUser_(currentUsername); // {mobile: pinnedAt}, this user only
 
   var byMobile = {};
   rows.forEach(function (r) {
@@ -1137,10 +1157,9 @@ function buildInboxConversations_(currentUsername) {
     }
   });
 
-  return Object.keys(byMobile).map(function (mobile) {
+  var base = Object.keys(byMobile).map(function (mobile) {
     var last = byMobile[mobile];
     var doctor = doctorByMobile[normalizeMobile_(mobile)];
-    var readState = readByMobile[mobile];
     return {
       MobileNumber: mobile,
       CustomerName: doctor ? doctor.Name : "",
@@ -1148,6 +1167,57 @@ function buildInboxConversations_(currentUsername) {
       LastStatus: last.Status,
       LastDirection: last.Direction,
       LastTimestamp: last.Timestamp,
+    };
+  });
+
+  try {
+    cache.put(INBOX_CONV_CACHE_KEY_, JSON.stringify(base), 8); // seconds
+  } catch (err) {
+    // Over CacheService's ~100KB per-key limit (a LOT of distinct
+    // conversations) — just skip caching this round rather than fail.
+  }
+  return base;
+}
+
+/**
+ * Pulls just one conversation's messages out of the (ever-growing) Inbox
+ * sheet without paying to turn every OTHER row into a JS object first.
+ * sheetToObjects_ builds a full object per row regardless of whether it
+ * matches — fine at hundreds of rows, wasteful at 10,000+ when only
+ * ~20-50 belong to the conversation being opened.
+ */
+function getThreadRows_(mobile) {
+  var sheet = getSheet_("Inbox");
+  var values = sheet.getDataRange().getValues();
+  var headers = values[0];
+  var mobileCol = headers.indexOf("MobileNumber");
+  var target = String(mobile || "").trim();
+  var result = [];
+  for (var i = 1; i < values.length; i++) {
+    if (String(values[i][mobileCol]).trim() === target) {
+      var obj = {};
+      headers.forEach(function (h, idx) { obj[h] = values[i][idx]; });
+      result.push(obj);
+    }
+  }
+  result.sort(function (a, b) { return new Date(a.Timestamp) - new Date(b.Timestamp); });
+  return result;
+}
+
+function buildInboxConversations_(currentUsername) {
+  var base = buildInboxConversationsBase_();
+  var readByMobile = getReadStateMap_();
+  var pinnedMobiles = getPinnedMobilesForUser_(currentUsername); // {mobile: pinnedAt}, this user only
+
+  return base.map(function (c) {
+    var readState = readByMobile[c.MobileNumber];
+    return {
+      MobileNumber: c.MobileNumber,
+      CustomerName: c.CustomerName,
+      LastMessage: c.LastMessage,
+      LastStatus: c.LastStatus,
+      LastDirection: c.LastDirection,
+      LastTimestamp: c.LastTimestamp,
       // Shared across every device/agent (stored in the InboxReadState
       // sheet) — the client just compares this to LastTimestamp instead
       // of keeping its own per-browser read/unread flag.
@@ -1156,8 +1226,8 @@ function buildInboxConversations_(currentUsername) {
       // Per-user pin (see PinnedConversations sheet) — each agent pins
       // their own frequently-needed numbers (support line, manager,
       // etc.), independent of what anyone else has pinned.
-      Pinned: !!pinnedMobiles[mobile],
-      PinnedAt: pinnedMobiles[mobile] || "",
+      Pinned: !!pinnedMobiles[c.MobileNumber],
+      PinnedAt: pinnedMobiles[c.MobileNumber] || "",
     };
   }).sort(function (a, b) { return new Date(b.LastTimestamp) - new Date(a.LastTimestamp); });
 }
