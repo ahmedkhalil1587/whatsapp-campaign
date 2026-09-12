@@ -937,6 +937,91 @@ function setupScheduleTrigger_() {
 }
 
 // ---------------------------------------------------------------
+// Inbox auto-deletion — the Inbox sheet only ever grows, and every
+// message list/thread read has to scan it (see
+// buildInboxConversationsBase_ / getThreadRows_), so at thousands+ of
+// rows it starts costing real time on every poll. This PERMANENTLY
+// deletes a CONVERSATION's messages once nobody — the customer or a
+// staff member — has said anything in it for INBOX_DELETE_AFTER_DAYS_
+// days, the same idea as WhatsApp's own disappearing-messages feature.
+// There is no undo and no archive copy — see archiveOldConversations_
+// in git history / an earlier version of this file if you want a
+// keep-a-copy version instead.
+// ---------------------------------------------------------------
+
+var INBOX_DELETE_AFTER_DAYS_ = 7;
+
+function deleteOldConversations_() {
+  var inboxSheet = getSheet_("Inbox");
+  var values = inboxSheet.getDataRange().getValues();
+  var headers = values[0];
+  var mobileCol = headers.indexOf("MobileNumber");
+  var tsCol = headers.indexOf("Timestamp");
+
+  // A conversation is only deleted once ITS most recent message —
+  // customer or staff — is older than the cutoff, not row-by-row, so an
+  // old message doesn't get deleted out from under a still-active
+  // back-and-forth.
+  var lastByMobile = {};
+  for (var i = 1; i < values.length; i++) {
+    var mobile = String(values[i][mobileCol]).trim();
+    var ts = new Date(values[i][tsCol]);
+    if (!lastByMobile[mobile] || ts > lastByMobile[mobile]) lastByMobile[mobile] = ts;
+  }
+
+  var cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - INBOX_DELETE_AFTER_DAYS_);
+
+  var keepRows = [];
+  var deletedCount = 0;
+  for (var j = 1; j < values.length; j++) {
+    var m = String(values[j][mobileCol]).trim();
+    if (lastByMobile[m] && lastByMobile[m] < cutoff) {
+      deletedCount++;
+    } else {
+      keepRows.push(values[j]);
+    }
+  }
+
+  if (deletedCount === 0) return { deleted: 0 };
+
+  // Rewrite Inbox with only the kept rows — one bulk write, instead of
+  // many individual deleteRow calls (which get slow and messy once
+  // you're removing hundreds of scattered rows).
+  inboxSheet.getRange(2, 1, Math.max(values.length - 1, 1), headers.length).clearContent();
+  if (keepRows.length > 0) {
+    inboxSheet.getRange(2, 1, keepRows.length, headers.length).setValues(keepRows);
+  }
+
+  try { CacheService.getScriptCache().remove(INBOX_CONV_CACHE_KEY_); } catch (err) { /* non-critical */ }
+  return { deleted: deletedCount, conversations: Object.keys(lastByMobile).filter(function (m) { return lastByMobile[m] < cutoff; }).length };
+}
+
+/**
+ * Run this ONCE manually (select "runInboxDeleteSetup" in the function
+ * dropdown and click Run) to install a daily trigger that permanently
+ * deletes inactive conversations automatically. This is irreversible —
+ * make sure that's really what you want before running it.
+ */
+function setupInboxDeleteTrigger_() {
+  ScriptApp.getProjectTriggers().forEach(function (trigger) {
+    if (trigger.getHandlerFunction() === "deleteOldConversations_") {
+      ScriptApp.deleteTrigger(trigger);
+    }
+  });
+  ScriptApp.newTrigger("deleteOldConversations_")
+    .timeBased()
+    .everyDays(1)
+    .atHour(3) // quiet hours — minimizes any chance of colliding with someone actively viewing the Inbox sheet
+    .create();
+}
+
+/** Plain wrapper with no trailing underscore, so it shows up in the Run dropdown. */
+function runInboxDeleteSetup() {
+  setupInboxDeleteTrigger_();
+}
+
+// ---------------------------------------------------------------
 // Webhook — receives delivery/read/failed status updates from Meta
 // Deploy URL + this GET handler is what you paste into the Meta
 // "Callback URL" field. doGet above already routes here for the
