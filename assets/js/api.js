@@ -49,17 +49,15 @@ const MCApi = (() => {
 
     if (!res.ok) throw new Error(`Backend request failed (${res.status})`);
     const data = await res.json();
-    if (data && data.ok === false) {
-      // A dead/expired token leaves stale UI state and confusing generic
-      // errors scattered across every page instead of one clear signal —
-      // catch it centrally, here, and send the person straight to a
-      // fresh login instead of leaving them stuck.
-      if (/session expired/i.test(data.error || "") && typeof MCAuth !== "undefined" && MCAuth.logout) {
-        MCAuth.logout();
-        throw new Error(data.error);
-      }
-      throw new Error(data.error || "Backend returned an error");
-    }
+    // NOTE: an automatic "force logout on session-expired error" used to
+    // live here. It caused more harm than good — a transient hiccup (a
+    // slow request, several calls landing at once when switching chats,
+    // etc.) could get misread as a dead session and boot someone out of
+    // an active session, mid-work, for no real reason. Removed — a
+    // failed call just surfaces its error like any other; only an
+    // actual expired/invalid session (caught by MCAuth.guard() on the
+    // next page load) sends someone back to login.
+    if (data && data.ok === false) throw new Error(data.error || "Backend returned an error");
     return data;
   }
 
