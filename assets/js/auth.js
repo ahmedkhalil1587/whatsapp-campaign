@@ -11,8 +11,15 @@ const MCAuth = (() => {
   const SESSION_KEY = "mc_session";
   const DEMO_USER = { username: "admin", password: "admin123", name: "Admin" };
 
+  // Sessions live in sessionStorage only — never localStorage — so
+  // closing the browser (or that tab) always logs the person out. The
+  // backend's own token expires after a few hours anyway; keeping a
+  // session "remembered" in localStorage past that point just left
+  // people stuck looking logged in while every action failed with a
+  // confusing generic error, with no clear way out short of a manual
+  // logout/login.
   function getSession() {
-    try { return JSON.parse(localStorage.getItem(SESSION_KEY) || sessionStorage.getItem(SESSION_KEY)); }
+    try { return JSON.parse(sessionStorage.getItem(SESSION_KEY)); }
     catch { return null; }
   }
 
@@ -20,7 +27,7 @@ const MCAuth = (() => {
     return !!getSession();
   }
 
-  async function login(username, password, remember) {
+  async function login(username, password) {
     let user = null;
 
     if (typeof MCApi !== "undefined" && MCApi.isConfigured()) {
@@ -34,13 +41,16 @@ const MCAuth = (() => {
     if (!user) throw new Error("invalid");
 
     const payload = JSON.stringify({ ...user, loggedInAt: Date.now() });
-    (remember ? localStorage : sessionStorage).setItem(SESSION_KEY, payload);
+    sessionStorage.setItem(SESSION_KEY, payload);
     return user;
   }
 
   function logout() {
-    localStorage.removeItem(SESSION_KEY);
     sessionStorage.removeItem(SESSION_KEY);
+    // Clean up anything from the old localStorage-based sessions too, so
+    // a person who was logged in before this change doesn't have a
+    // leftover token lying around indefinitely.
+    localStorage.removeItem(SESSION_KEY);
     window.location.href = "login.html";
   }
 

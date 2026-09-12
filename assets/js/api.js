@@ -49,7 +49,17 @@ const MCApi = (() => {
 
     if (!res.ok) throw new Error(`Backend request failed (${res.status})`);
     const data = await res.json();
-    if (data && data.ok === false) throw new Error(data.error || "Backend returned an error");
+    if (data && data.ok === false) {
+      // A dead/expired token leaves stale UI state and confusing generic
+      // errors scattered across every page instead of one clear signal —
+      // catch it centrally, here, and send the person straight to a
+      // fresh login instead of leaving them stuck.
+      if (/session expired/i.test(data.error || "") && typeof MCAuth !== "undefined" && MCAuth.logout) {
+        MCAuth.logout();
+        throw new Error(data.error);
+      }
+      throw new Error(data.error || "Backend returned an error");
+    }
     return data;
   }
 
