@@ -244,9 +244,15 @@ function appendRow_(name, data) {
   var row = headers.map(function (h) { return data[h] !== undefined ? data[h] : ""; });
   sheet.appendRow(row);
   // A new message just landed — don't make anyone wait out the
-  // conversation-list cache's TTL to see it (see buildInboxConversationsBase_).
+  // conversation-list cache's TTL to see it (see buildInboxConversationsBase_),
+  // and don't let this specific conversation's cached thread (see
+  // getThreadRows_) go stale either.
   if (name === "Inbox") {
-    try { CacheService.getScriptCache().remove(INBOX_CONV_CACHE_KEY_); } catch (err) { /* non-critical */ }
+    var cache = CacheService.getScriptCache();
+    try { cache.remove(INBOX_CONV_CACHE_KEY_); } catch (err) { /* non-critical */ }
+    if (data.MobileNumber) {
+      try { cache.remove("thread_" + String(data.MobileNumber).trim()); } catch (err) { /* non-critical */ }
+    }
   }
   return data;
 }
@@ -1316,11 +1322,25 @@ function buildInboxConversationsBase_() {
  * ~20-50 belong to the conversation being opened.
  */
 function getThreadRows_(mobile) {
+  var target = String(mobile || "").trim();
+  if (!target) return [];
+
+  // A conversation someone just opened (or is actively polling while
+  // it's open) shouldn't pay the full-sheet-scan cost again seconds
+  // later — cache it briefly per mobile number. Invalidated instantly
+  // by appendRow_ whenever a new message lands for this same number, so
+  // a cache hit never shows stale/missing messages.
+  var cache = CacheService.getScriptCache();
+  var cacheKey = "thread_" + target;
+  var cached = cache.get(cacheKey);
+  if (cached) {
+    try { return JSON.parse(cached); } catch (err) { /* fall through and recompute */ }
+  }
+
   var sheet = getSheet_("Inbox");
   var values = sheet.getDataRange().getValues();
   var headers = values[0];
   var mobileCol = headers.indexOf("MobileNumber");
-  var target = String(mobile || "").trim();
   var result = [];
   for (var i = 1; i < values.length; i++) {
     if (String(values[i][mobileCol]).trim() === target) {
@@ -1330,6 +1350,13 @@ function getThreadRows_(mobile) {
     }
   }
   result.sort(function (a, b) { return new Date(a.Timestamp) - new Date(b.Timestamp); });
+
+  try {
+    cache.put(cacheKey, JSON.stringify(result), 30); // seconds
+  } catch (err) {
+    // A very long conversation history can exceed CacheService's ~100KB
+    // per-key limit — just skip caching that one rather than fail.
+  }
   return result;
 }
 
