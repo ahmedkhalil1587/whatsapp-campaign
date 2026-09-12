@@ -12,6 +12,7 @@
  *   Inbox      : Timestamp | MobileNumber | CustomerID | Direction | Body | MediaUrl | WaMessageId | Status | AgentUsername
  *   InboxReadState : MobileNumber | LastReadTimestamp | LastReadBy
  *   PinnedConversations : Username | MobileNumber | PinnedAt
+ *   Sessions   : Token | Username | Role | ExpiresAt
  *   Signups    : ID | Timestamp | Name | Email | PasswordHash | Status | VerificationCode | Role
  *   Users      : Username | Password | Name | Role
  *
@@ -89,19 +90,58 @@ var PUBLIC_ACTIONS_ = ["auth.login", "auth.register", "auth.verify"];
 var AGENT_ALLOWED_ACTIONS_ = ["doctors.list", "doctors.create", "doctors.update", "doctors.delete", "doctors.bulkImport", "inbox.list", "inbox.thread", "inbox.send", "inbox.sendMedia", "inbox.markRead", "inbox.startNewConversation", "inbox.sendQrSeha", "inbox.sendReportRequest", "inbox.pin", "inbox.unpin", "inbox.search", "media.upload"];
 var SESSION_TTL_SECONDS_ = 21600; // 6 hours; slides forward on each authorized request
 
+// Sessions live in a "Sessions" sheet (Token | Username | Role |
+// ExpiresAt) instead of CacheService. CacheService is explicitly
+// documented by Google as "not guaranteed to persist until its
+// expiration time" and can evict entries early under its own internal
+// pressure (a hard ~1000-item FIFO cap) — that was silently logging
+// people out mid-session at random, unrelated to the actual 6-hour
+// window. A sheet has no such eviction risk.
 function generateToken_(username, role) {
   var token = Utilities.getUuid();
-  CacheService.getScriptCache().put("sess_" + token, JSON.stringify({ username: username, role: role }), SESSION_TTL_SECONDS_);
+  var expiresAt = new Date(Date.now() + SESSION_TTL_SECONDS_ * 1000).toISOString();
+  appendRow_("Sessions", { Token: token, Username: username, Role: role, ExpiresAt: expiresAt });
   return token;
 }
 
 function validateToken_(token) {
   if (!token) return null;
-  var cache = CacheService.getScriptCache();
-  var raw = cache.get("sess_" + token);
-  if (!raw) return null;
-  cache.put("sess_" + token, raw, SESSION_TTL_SECONDS_); // slide the expiration window
-  return JSON.parse(raw);
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Sessions");
+  if (!sheet) return null; // sheet not set up — treat as no valid session rather than erroring
+  var values = sheet.getDataRange().getValues();
+  var headers = values[0];
+  var tokenCol = headers.indexOf("Token");
+  var userCol = headers.indexOf("Username");
+  var roleCol = headers.indexOf("Role");
+  var expiresCol = headers.indexOf("ExpiresAt");
+
+  for (var i = 1; i < values.length; i++) {
+    if (values[i][tokenCol] === token) {
+      var expiresAt = new Date(values[i][expiresCol]);
+      if (expiresAt < new Date()) return null; // expired — a daily cleanup sweeps these rows out (see cleanupExpiredSessions_)
+      // Slide the expiration window forward on activity, same as before.
+      var newExpiresAt = new Date(Date.now() + SESSION_TTL_SECONDS_ * 1000).toISOString();
+      sheet.getRange(i + 1, expiresCol + 1).setValue(newExpiresAt);
+      return { username: values[i][userCol], role: values[i][roleCol] };
+    }
+  }
+  return null;
+}
+
+/** Removes expired rows from the Sessions sheet so it doesn't grow forever. Safe to run on a schedule. */
+function cleanupExpiredSessions_() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Sessions");
+  if (!sheet) return;
+  var values = sheet.getDataRange().getValues();
+  var headers = values[0];
+  var expiresCol = headers.indexOf("ExpiresAt");
+  var now = new Date();
+  var keepRows = [];
+  for (var i = 1; i < values.length; i++) {
+    if (new Date(values[i][expiresCol]) >= now) keepRows.push(values[i]);
+  }
+  sheet.getRange(2, 1, Math.max(values.length - 1, 1), headers.length).clearContent();
+  if (keepRows.length > 0) sheet.getRange(2, 1, keepRows.length, headers.length).setValues(keepRows);
 }
 
 function routeAction_(action, body) {
@@ -944,14 +984,18 @@ function setupScheduleTrigger_() {
 // deletes a CONVERSATION's messages once nobody — the customer or a
 // staff member — has said anything in it for INBOX_DELETE_AFTER_DAYS_
 // days, the same idea as WhatsApp's own disappearing-messages feature.
-// There is no undo and no archive copy — see archiveOldConversations_
-// in git history / an earlier version of this file if you want a
-// keep-a-copy version instead.
+// There is no undo and no archive copy.
+//
+// The same daily trigger also sweeps expired rows out of the Sessions
+// sheet (see cleanupExpiredSessions_) — no separate schedule needed for
+// that, it's cheap enough to piggyback here.
 // ---------------------------------------------------------------
 
 var INBOX_DELETE_AFTER_DAYS_ = 7;
 
 function deleteOldConversations_() {
+  cleanupExpiredSessions_();
+
   var inboxSheet = getSheet_("Inbox");
   var values = inboxSheet.getDataRange().getValues();
   var headers = values[0];
