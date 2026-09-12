@@ -1,0 +1,136 @@
+/**
+ * api.js — single point of contact with the Google Apps Script backend.
+ * The Apps Script Web App URL can be overridden by the user on the
+ * Settings page (stored in localStorage under "mc_gas_url"), but it also
+ * ships with a hardcoded DEFAULT_GAS_URL below so that public pages like
+ * signup.html / login.html work for visitors who have never logged in
+ * (and so never had a chance to save anything to their browser's
+ * localStorage). Every request goes through this wrapper so auth
+ * headers / error handling stay in one place.
+ */
+
+const MCApi = (() => {
+  const URL_KEY = "mc_gas_url";
+  // Deployed Apps Script Web App exec URL — update this after every new deployment.
+  const DEFAULT_GAS_URL = "https://script.google.com/macros/s/AKfycbxuCFiZtoBnfHL09SKh4Kbfw3JM6wZZ5CKpYc5ntCi0O1BhWHimReqHDsyxMbOdnQor8w/exec";
+
+  function getBaseUrl() {
+    return localStorage.getItem(URL_KEY) || DEFAULT_GAS_URL;
+  }
+
+  function setBaseUrl(url) {
+    localStorage.setItem(URL_KEY, url.trim());
+  }
+
+  function isConfigured() {
+    return !!getBaseUrl();
+  }
+
+  /**
+   * Apps Script Web Apps only reliably accept GET and POST, so every
+   * action is sent as POST with an "action" field describing the intended
+   * operation (mirrors REST verbs without needing PUT/DELETE support).
+   * The session token (issued at login) rides along automatically so the
+   * backend can verify identity and role on every request — not just the
+   * UI hiding buttons.
+   */
+  async function call(action, payload = {}) {
+    const base = getBaseUrl();
+    if (!base) throw new Error("Backend URL is not configured yet. Go to Settings first.");
+
+    const session = (typeof MCAuth !== "undefined" && MCAuth.getSession) ? MCAuth.getSession() : null;
+    const token = session && session.token;
+
+    const res = await fetch(base, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" }, // avoids CORS preflight on Apps Script
+      body: JSON.stringify({ action, token, ...payload }),
+    });
+
+    if (!res.ok) throw new Error(`Backend request failed (${res.status})`);
+    const data = await res.json();
+    if (data && data.ok === false) {
+      // A dead/expired token leaves stale UI state and confusing generic
+      // errors scattered across every page instead of one clear signal —
+      // catch it centrally, here, and send the person straight to a
+      // fresh login instead of leaving them stuck.
+      if (/session expired/i.test(data.error || "") && typeof MCAuth !== "undefined" && MCAuth.logout) {
+        MCAuth.logout();
+        throw new Error(data.error);
+      }
+      throw new Error(data.error || "Backend returned an error");
+    }
+    return data;
+  }
+
+  // ---- Convenience methods matching the Apps Script router (see backend/Code.gs) ----
+  const Doctors = {
+    list: (params = {}) => call("doctors.list", params),
+    create: (doctor) => call("doctors.create", { doctor }),
+    update: (id, doctor) => call("doctors.update", { id, doctor }),
+    remove: (id) => call("doctors.delete", { id }),
+    bulkImport: (rows) => call("doctors.bulkImport", { rows }),
+  };
+
+  const Campaigns = {
+    list: (params = {}) => call("campaigns.list", params),
+    create: (campaign) => call("campaigns.create", { campaign }),
+    send: (id) => call("campaigns.send", { id }),
+    retryFailed: (id) => call("campaigns.retryFailed", { id }),
+    logs: (id) => call("campaigns.logs", { id }),
+    pause: (id) => call("campaigns.pause", { id }),
+    resume: (id) => call("campaigns.resume", { id }),
+  };
+
+  const Templates = {
+    list: () => call("templates.list"),
+    create: (template) => call("templates.create", { template }),
+    update: (id, template) => call("templates.update", { id, template }),
+    remove: (id) => call("templates.delete", { id }),
+  };
+
+  const Dashboard = {
+    stats: () => call("dashboard.stats"),
+  };
+
+  const History = {
+    list: () => call("history.list"),
+  };
+
+  const Inbox = {
+    list: () => call("inbox.list"),
+    thread: (mobile) => call("inbox.thread", { mobile }),
+    send: (mobile, text) => call("inbox.send", { mobile, text }),
+    sendMedia: (mobile, mediaUrl, mediaType, caption, filename) => call("inbox.sendMedia", { mobile, mediaUrl, mediaType, caption, filename }),
+    markRead: (mobile, timestamp) => call("inbox.markRead", { mobile, timestamp }),
+    agentStatsRange: (startDate, endDate) => call("inbox.agentStatsRange", { startDate, endDate }),
+    startNewConversation: (mobile) => call("inbox.startNewConversation", { mobile }),
+    sendQrSeha: (mobile) => call("inbox.sendQrSeha", { mobile }),
+    sendReportRequest: (mobile) => call("inbox.sendReportRequest", { mobile }),
+    search: (query) => call("inbox.search", { query }),
+    pin: (mobile) => call("inbox.pin", { mobile }),
+    unpin: (mobile) => call("inbox.unpin", { mobile }),
+  };
+
+  const Settings = {
+    get: () => call("settings.get"),
+    save: (settings) => call("settings.save", { settings }),
+  };
+
+  const Media = {
+    upload: (filename, mimeType, base64) => call("media.upload", { filename, mimeType, base64 }),
+  };
+
+  const AuthApi = {
+    register: (name, email, password) => call("auth.register", { name, email, password }),
+    verify: (email, code) => call("auth.verify", { email, code }),
+  };
+
+  const Signups = {
+    list: () => call("signups.list"),
+    approve: (id, role) => call("signups.approve", { id, role }),
+    reject: (id) => call("signups.reject", { id }),
+  };
+
+  return { call, getBaseUrl, setBaseUrl, isConfigured, Doctors, Campaigns, Templates, Dashboard, History, Inbox, Settings, Media, AuthApi, Signups };
+})();

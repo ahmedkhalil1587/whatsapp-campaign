@@ -71,10 +71,6 @@
             <button class="btn btn-outline-secondary" type="button" id="togglePassword"><i class="bi bi-eye"></i></button>
           </div>
         </div>
-        <div class="form-check mb-4">
-          <input class="form-check-input" type="checkbox" id="remember" checked>
-          <label class="form-check-label small" for="remember" data-i18n="login.remember">Remember me on this device</label>
-        </div>
         <button type="submit" class="btn btn-mc-primary w-100" id="submitBtn">
           <span id="submitLabel" data-i18n="login.submit">Sign in</span>
         </button>
@@ -114,7 +110,6 @@
 
     const username = document.getElementById("username").value.trim();
     const password = document.getElementById("password").value;
-    const remember = document.getElementById("remember").checked;
 
     if (!username || !password) {
       alertBox.textContent = I18N.t("login.errorRequired");
@@ -126,7 +121,7 @@
     label.textContent = I18N.t("login.submitting");
 
     try {
-      await MCAuth.login(username, password, remember);
+      await MCAuth.login(username, password);
       window.location.href = "dashboard.html";
     } catch (err) {
       alertBox.textContent = I18N.t("login.errorInvalid");
