@@ -108,24 +108,58 @@ function validateToken_(token) {
   if (!token) return null;
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Sessions");
   if (!sheet) return null; // sheet not set up — treat as no valid session rather than erroring
-  var values = sheet.getDataRange().getValues();
-  var headers = values[0];
-  var tokenCol = headers.indexOf("Token");
-  var userCol = headers.indexOf("Username");
-  var roleCol = headers.indexOf("Role");
-  var expiresCol = headers.indexOf("ExpiresAt");
 
-  for (var i = 1; i < values.length; i++) {
-    if (values[i][tokenCol] === token) {
-      var expiresAt = new Date(values[i][expiresCol]);
-      if (expiresAt < new Date()) return null; // expired — a daily cleanup sweeps these rows out (see cleanupExpiredSessions_)
-      // Slide the expiration window forward on activity, same as before.
-      var newExpiresAt = new Date(Date.now() + SESSION_TTL_SECONDS_ * 1000).toISOString();
-      sheet.getRange(i + 1, expiresCol + 1).setValue(newExpiresAt);
-      return { username: values[i][userCol], role: values[i][roleCol] };
+  // Switching between chats (or any burst of activity) fires several
+  // requests in the same instant, and each one slides this same
+  // session's expiry forward — without a lock, concurrent
+  // read-then-write executions could race and clobber each other's
+  // update, occasionally reading a stale/inconsistent row and wrongly
+  // reporting "no valid session". A short lock makes each check+slide
+  // atomic instead.
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(5000);
+  } catch (err) {
+    // Couldn't get the lock in time — rather than falsely reject a
+    // perfectly valid session because of contention, let this one
+    // request through unslid; the next request will slide it forward.
+    var valuesNoLock = sheet.getDataRange().getValues();
+    var headersNoLock = valuesNoLock[0];
+    var tokenColNoLock = headersNoLock.indexOf("Token");
+    var userColNoLock = headersNoLock.indexOf("Username");
+    var roleColNoLock = headersNoLock.indexOf("Role");
+    var expiresColNoLock = headersNoLock.indexOf("ExpiresAt");
+    for (var k = 1; k < valuesNoLock.length; k++) {
+      if (valuesNoLock[k][tokenColNoLock] === token) {
+        if (new Date(valuesNoLock[k][expiresColNoLock]) < new Date()) return null;
+        return { username: valuesNoLock[k][userColNoLock], role: valuesNoLock[k][roleColNoLock] };
+      }
     }
+    return null;
   }
-  return null;
+
+  try {
+    var values = sheet.getDataRange().getValues();
+    var headers = values[0];
+    var tokenCol = headers.indexOf("Token");
+    var userCol = headers.indexOf("Username");
+    var roleCol = headers.indexOf("Role");
+    var expiresCol = headers.indexOf("ExpiresAt");
+
+    for (var i = 1; i < values.length; i++) {
+      if (values[i][tokenCol] === token) {
+        var expiresAt = new Date(values[i][expiresCol]);
+        if (expiresAt < new Date()) return null; // expired — a daily cleanup sweeps these rows out (see cleanupExpiredSessions_)
+        // Slide the expiration window forward on activity, same as before.
+        var newExpiresAt = new Date(Date.now() + SESSION_TTL_SECONDS_ * 1000).toISOString();
+        sheet.getRange(i + 1, expiresCol + 1).setValue(newExpiresAt);
+        return { username: values[i][userCol], role: values[i][roleCol] };
+      }
+    }
+    return null;
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /** Removes expired rows from the Sessions sheet so it doesn't grow forever. Safe to run on a schedule. */
