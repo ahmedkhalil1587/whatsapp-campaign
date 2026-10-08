@@ -12,8 +12,14 @@
 <link rel="stylesheet" href="assets/css/style.css">
 <style>
   body[data-page="inbox"] .main-col { height: 100vh; overflow: hidden; }
-  body[data-page="inbox"] .content-area { display: flex; flex-direction: column; overflow: hidden; }
+  body[data-page="inbox"] .content-area { display: flex; flex-direction: column; overflow: hidden; padding: 10px 16px 12px; }
   body[data-page="inbox"] .content-area > * { flex-shrink: 0; }
+  /* Compact header so small call-center screens keep most of the height for the chat itself */
+  body[data-page="inbox"] .topbar { padding: 6px 16px; }
+  body[data-page="inbox"] .content-area > .d-flex.flex-wrap { margin-bottom: 8px !important; }
+  body[data-page="inbox"] .content-area > .d-flex.flex-wrap h1 { font-size: 1.05rem; margin-bottom: 1px !important; }
+  body[data-page="inbox"] .content-area > .d-flex.flex-wrap p { margin-bottom: 0 !important; font-size: .74rem; }
+  body[data-page="inbox"] .content-area > .d-flex.flex-wrap .btn { padding: 4px 10px; font-size: .8rem; }
   .inbox-shell { display: flex; flex: 1; min-height: 0; border: 1px solid var(--mc-border); border-radius: var(--mc-radius); overflow: hidden; background: var(--mc-surface); }
   .conv-list { width: 320px; flex-shrink: 0; border-inline-end: 1px solid var(--mc-border); overflow-y: auto; display: flex; flex-direction: column; }
   .conv-item { padding: 12px 14px; border-bottom: 1px solid var(--mc-border); cursor: pointer; display: flex; flex-direction: column; gap: 2px; }
