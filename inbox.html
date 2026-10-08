@@ -11,7 +11,10 @@
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=IBM+Plex+Sans+Arabic:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/css/style.css">
 <style>
-  .inbox-shell { display: flex; height: calc(100vh - 130px); min-height: 480px; border: 1px solid var(--mc-border); border-radius: var(--mc-radius); overflow: hidden; background: var(--mc-surface); }
+  body[data-page="inbox"] .main-col { height: 100vh; overflow: hidden; }
+  body[data-page="inbox"] .content-area { display: flex; flex-direction: column; overflow: hidden; }
+  body[data-page="inbox"] .content-area > * { flex-shrink: 0; }
+  .inbox-shell { display: flex; flex: 1; min-height: 0; border: 1px solid var(--mc-border); border-radius: var(--mc-radius); overflow: hidden; background: var(--mc-surface); }
   .conv-list { width: 320px; flex-shrink: 0; border-inline-end: 1px solid var(--mc-border); overflow-y: auto; display: flex; flex-direction: column; }
   .conv-item { padding: 12px 14px; border-bottom: 1px solid var(--mc-border); cursor: pointer; display: flex; flex-direction: column; gap: 2px; }
   .conv-item:hover { background: var(--mc-primary-light); }
