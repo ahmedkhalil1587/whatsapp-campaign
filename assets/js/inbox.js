@@ -14,6 +14,11 @@ let pollTimer = null;
 let pollInFlight = false; // guards against overlapping poll cycles hammering Apps Script
 let convFilter = "all"; // "all" | "unread" | "replied"
 let threadCache = {}; // mobile -> last-known rows[], so re-opening a chat is instant (stale-while-revalidate)
+// The message currently staged to be quoted in the next outgoing reply (WhatsApp-style
+// "swipe to reply"), or null. { id, waMessageId, direction, agentUsername, body } —
+// `id` is our own inbox row id (ReplyToId, for rendering the quote in OUR UI),
+// `waMessageId` is the real WhatsApp wamid (for WhatsApp's own native reply threading).
+let replyingTo = null;
 
 // --- Read/unread tracking -------------------------------------------------
 // Shared across every device and agent — the backend keeps one row per
@@ -190,7 +195,7 @@ function renderMessageSearchResults(rows, query) {
   }
   const dateFmt = new Intl.DateTimeFormat(I18N.lang === "ar" ? "ar-EG" : "en-US", { dateStyle: "short", timeStyle: "short" });
   resultsBox.innerHTML = rows.map((r) => `
-    <div class="msg-search-item" data-mobile="${escapeHtml(r.MobileNumber)}">
+    <div class="msg-search-item" data-mobile="${escapeHtml(r.MobileNumber)}" data-msg-id="${escapeHtml(r.Id || "")}">
       <div class="d-flex justify-content-between align-items-center">
         <span class="msg-search-name">${escapeHtml(r.CustomerName) || I18N.t("inbox.unknownCustomer")}</span>
         <span class="msg-search-time">${r.Timestamp ? dateFmt.format(new Date(r.Timestamp)) : ""}</span>
@@ -201,9 +206,9 @@ function renderMessageSearchResults(rows, query) {
   resultsBox.querySelectorAll(".msg-search-item").forEach((el) => {
     el.addEventListener("click", () => {
       // Keep the search box and results as-is (like WhatsApp) — only
-      // navigate to the chat. The person clears the box themselves when
-      // they're done, and the normal list comes back at that point.
-      loadThread(el.getAttribute("data-mobile"), true);
+      // navigate to the chat, and jump straight to the matched message
+      // itself (not just the latest one in the conversation).
+      loadThread(el.getAttribute("data-mobile"), false, el.getAttribute("data-msg-id") || null);
     });
   });
 }
@@ -296,8 +301,10 @@ function renderConvList() {
   });
 }
 
-async function loadThread(mobile, scrollToBottom) {
+async function loadThread(mobile, scrollToBottom, highlightId) {
   activeMobile = mobile;
+  // Switching conversations means any staged reply no longer applies.
+  if (replyingTo) cancelReply();
   // Mark it read the moment it's opened — that's the point of opening it.
   const openedConv = allConversations.find((c) => c.MobileNumber === mobile);
   markRead(mobile, openedConv && openedConv.LastTimestamp);
@@ -319,7 +326,9 @@ async function loadThread(mobile, scrollToBottom) {
   // doesn't yank someone away from history they're reading. Hardcoding
   // "true" here (as before) forced a jump to the latest message on
   // *every* poll cycle regardless of where the person had scrolled to.
-  if (cached) renderThread(cached, scrollToBottom);
+  // `highlightId` (coming from a message-search result click) overrides
+  // both — jump to and flash that specific message instead of the bottom.
+  if (cached) renderThread(cached, scrollToBottom, highlightId);
   else {
     document.getElementById("threadBody").innerHTML = `<div class="text-center text-secondary small py-3">${I18N.t("common.loading") || "…"}</div>`;
   }
@@ -328,7 +337,7 @@ async function loadThread(mobile, scrollToBottom) {
     const res = await MCApi.Inbox.thread(mobile);
     if (mobile !== activeMobile) return; // user already switched to another chat — drop this stale response
     threadCache[mobile] = res.rows || [];
-    renderThread(res.rows || [], scrollToBottom || !cached);
+    renderThread(res.rows || [], scrollToBottom || !cached, highlightId);
     // The background refresh may have revealed an even newer last message
     // than what we knew when we first marked this read — catch up again.
     const freshConv = allConversations.find((c) => c.MobileNumber === mobile);
@@ -338,13 +347,93 @@ async function loadThread(mobile, scrollToBottom) {
   }
 }
 
-function renderThread(rows, forceScrollToBottom) {
+/** Scrolls a specific message bubble into view within the open thread and
+ * flashes it briefly, so it's obvious which one was being pointed to —
+ * used both for "jump to this message" from search and for tapping a
+ * quoted reply to find its original. */
+function scrollToMessage(id) {
+  if (!id) return;
+  const body = document.getElementById("threadBody");
+  const el = body.querySelector(`[data-msg-id="${(window.CSS && CSS.escape) ? CSS.escape(id) : id}"]`);
+  if (!el) return;
+  el.scrollIntoView({ block: "center", behavior: "smooth" });
+  el.classList.remove("msg-highlight");
+  // Force a reflow so re-adding the class restarts the flash animation
+  // even if the same message was just highlighted a moment ago.
+  void el.offsetWidth;
+  el.classList.add("msg-highlight");
+  setTimeout(() => el.classList.remove("msg-highlight"), 1600);
+}
+
+/** Builds the small WhatsApp-style quoted-message box shown inside a bubble
+ * that's a reply to an earlier message. `quoted` is the original row (looked
+ * up by id within the same thread) or undefined if it couldn't be found. */
+function buildQuoteHtml(quoted) {
+  if (!quoted) {
+    return `<div class="msg-quote" dir="auto"><div class="msg-quote-body"><div class="msg-quote-text fst-italic">${I18N.t("inbox.originalDeleted")}</div></div></div>`;
+  }
+  const name = quoted.Direction === "out"
+    ? (quoted.AgentUsername || I18N.t("meta.appName"))
+    : (document.getElementById("threadName").textContent || "");
+  const rawText = String(quoted.Body ?? "");
+  const cleanText = /^\[(image|document|video|audio|sticker)\]$/i.test(rawText.trim())
+    ? (quoted.MediaUrl ? I18N.t("inbox.attachment") : "")
+    : rawText;
+  const snippet = cleanText.length > 90 ? cleanText.slice(0, 90) + "…" : cleanText;
+  return `
+    <div class="msg-quote" dir="auto" data-target-id="${escapeHtml(quoted.Id || "")}">
+      <div class="msg-quote-bar"></div>
+      <div class="msg-quote-body">
+        <div class="msg-quote-name">${escapeHtml(name)}</div>
+        <div class="msg-quote-text">${escapeHtml(snippet)}</div>
+      </div>
+    </div>`;
+}
+
+/** Stages a message to be quoted in the next outgoing reply — the WhatsApp
+ * "Reply" action. `rows` is the full thread currently on screen, so we can
+ * look up the exact row being replied to by id. */
+function startReplyTo(id, rows) {
+  const row = (rows || threadCache[activeMobile] || []).find((r) => r.Id === id);
+  if (!row) return;
+  replyingTo = { id: row.Id, waMessageId: row.WaMessageId || "", direction: row.Direction, agentUsername: row.AgentUsername, body: row.Body, mediaUrl: row.MediaUrl };
+  renderReplyPreview();
+  document.getElementById("replyInput").focus();
+}
+
+function cancelReply() {
+  replyingTo = null;
+  renderReplyPreview();
+}
+
+function renderReplyPreview() {
+  const bar = document.getElementById("replyPreviewBar");
+  if (!bar) return;
+  if (!replyingTo) { bar.classList.add("d-none"); return; }
+  bar.classList.remove("d-none");
+  document.getElementById("replyPreviewName").textContent = replyingTo.direction === "out"
+    ? (replyingTo.agentUsername || I18N.t("meta.appName"))
+    : (document.getElementById("threadName").textContent || "");
+  const rawText = String(replyingTo.body ?? "");
+  const cleanText = /^\[(image|document|video|audio|sticker)\]$/i.test(rawText.trim())
+    ? (replyingTo.mediaUrl ? I18N.t("inbox.attachment") : "")
+    : rawText;
+  document.getElementById("replyPreviewText").textContent = cleanText;
+}
+
+function renderThread(rows, forceScrollToBottom, highlightId) {
   const body = document.getElementById("threadBody");
   // Only auto-scroll if the user was already near the bottom (or we're told
   // to force it, e.g. right after sending). Otherwise a live update would
-  // yank someone away from history they're scrolled up reading.
-  const wasNearBottom = forceScrollToBottom || (body.scrollHeight - body.scrollTop - body.clientHeight < 80);
+  // yank someone away from history they're scrolled up reading. A specific
+  // message to highlight (from search) takes priority over both.
+  const wasNearBottom = !highlightId && (forceScrollToBottom || (body.scrollHeight - body.scrollTop - body.clientHeight < 80));
   const timeFmt = new Intl.DateTimeFormat(I18N.lang === "ar" ? "ar-EG" : "en-US", { hour: "2-digit", minute: "2-digit" });
+  // So a reply bubble can show a quoted preview of the message it's
+  // replying to, without a separate round trip — look it up by id within
+  // the same thread that's already loaded.
+  const rowsById = {};
+  rows.forEach((r) => { if (r && r.Id) rowsById[r.Id] = r; });
   // Skip any blank/malformed rows (e.g. an empty row in the sheet) instead
   // of letting them throw and abort the whole render.
   body.innerHTML = rows.filter((r) => r && (r.Body || r.MediaUrl)).map((r) => {
@@ -379,14 +468,32 @@ function renderThread(rows, forceScrollToBottom) {
       .replace(/\n{3,}/g, "\n\n")
       .split("\n").map((line) => line.replace(/[ \t]{2,}/g, " ").trim()).join("\n")
       .trim();
+    const quoteHtml = r.ReplyToId ? buildQuoteHtml(rowsById[r.ReplyToId]) : "";
     return `
-    <div class="msg-bubble ${r.Direction === "out" ? "out" : "in"} ${r._pending ? "pending" : ""}" dir="auto">
+    <div class="msg-bubble ${r.Direction === "out" ? "out" : "in"} ${r._pending ? "pending" : ""}" dir="auto" data-msg-id="${escapeHtml(r.Id || "")}">
+      ${r.Id ? `<span class="msg-reply-btn" data-msg-id="${escapeHtml(r.Id)}" title="${escapeHtml(I18N.t("inbox.reply"))}"><i class="bi bi-reply-fill"></i></span>` : ""}
       ${r.Direction === "out" && r.AgentUsername ? `<div class="msg-agent-label">${escapeHtml(r.AgentUsername)}</div>` : ""}
+      ${quoteHtml}
       ${mediaHtml}
       <span class="msg-text">${escapeHtml(cleanBody)}</span>&nbsp;<span class="msg-time">${r._pending ? "…" : (r.Timestamp ? timeFmt.format(new Date(r.Timestamp)) : "")}</span>
     </div>`;
   }).join("");
-  if (wasNearBottom) body.scrollTop = body.scrollHeight;
+
+  // Reply button: stage this message to be quoted in the next outgoing send.
+  body.querySelectorAll(".msg-reply-btn").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      startReplyTo(btn.getAttribute("data-msg-id"), rows);
+    });
+  });
+  // Tapping a quoted preview inside a bubble jumps to the original message —
+  // same "find the original" behavior WhatsApp itself has.
+  body.querySelectorAll(".msg-quote[data-target-id]").forEach((q) => {
+    q.addEventListener("click", () => scrollToMessage(q.getAttribute("data-target-id")));
+  });
+
+  if (highlightId) scrollToMessage(highlightId);
+  else if (wasNearBottom) body.scrollTop = body.scrollHeight;
 }
 
 async function sendReply() {
@@ -394,14 +501,16 @@ async function sendReply() {
   const text = input.value.trim();
   if (!text || !activeMobile) return;
   const mobile = activeMobile;
+  const replyTarget = replyingTo; // capture before clearing — sendReply itself is async
 
   // Optimistic send: paint the message immediately and clear the box right
   // away instead of waiting on the (often slow) Apps Script round trip —
   // we reconcile with the real server copy in the background afterwards.
   input.value = "";
   autoResizeReplyInput(input);
+  cancelReply(); // clear the "replying to ..." preview bar, like WhatsApp does on send
   const currentUsername = (typeof MCAuth !== "undefined" && MCAuth.getSession && MCAuth.getSession()) ? MCAuth.getSession().username : "";
-  const optimisticRow = { Direction: "out", Body: text, Timestamp: new Date().toISOString(), AgentUsername: currentUsername, _pending: true };
+  const optimisticRow = { Direction: "out", Body: text, Timestamp: new Date().toISOString(), AgentUsername: currentUsername, _pending: true, ReplyToId: replyTarget ? replyTarget.id : "" };
   threadCache[mobile] = [...(threadCache[mobile] || []), optimisticRow];
   if (mobile === activeMobile) renderThread(threadCache[mobile], true);
   // Reflect it in the conversation list preview immediately too.
@@ -409,7 +518,7 @@ async function sendReply() {
   if (conv) { conv.LastMessage = text; conv.LastDirection = "out"; conv.LastTimestamp = optimisticRow.Timestamp; markRead(mobile, optimisticRow.Timestamp); renderConvList(); }
 
   try {
-    await MCApi.Inbox.send(mobile, text);
+    await MCApi.Inbox.send(mobile, text, replyTarget ? replyTarget.id : undefined, replyTarget ? replyTarget.waMessageId : undefined);
     // Fire-and-forget background reconcile — don't block the UI on it.
     loadThread(mobile, false);
     loadConversations(true);
@@ -417,6 +526,8 @@ async function sendReply() {
     // Roll back the optimistic bubble and let the person know it didn't go.
     threadCache[mobile] = (threadCache[mobile] || []).filter((r) => r !== optimisticRow);
     if (mobile === activeMobile) renderThread(threadCache[mobile], false);
+    // Give them the reply context back too, so they don't have to re-pick the message.
+    if (replyTarget) { replyingTo = replyTarget; renderReplyPreview(); }
     MCApp.toast(err.message || I18N.t("inbox.sendError"), "error");
   }
 }
@@ -463,6 +574,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   document.getElementById("refreshBtn").addEventListener("click", () => loadConversations(true));
   document.getElementById("sendReplyBtn").addEventListener("click", sendReply);
+  document.getElementById("cancelReplyBtn").addEventListener("click", cancelReply);
   const replyInputEl = document.getElementById("replyInput");
   replyInputEl.addEventListener("keydown", (e) => {
     // Enter sends the message; Shift+Enter inserts a real newline instead
@@ -557,4 +669,4 @@ document.addEventListener("DOMContentLoaded", () => {
   window.addEventListener("beforeunload", () => clearInterval(pollTimer));
 });
 
-I18N.onChange(() => { renderConvList(); if (activeMobile) loadThread(activeMobile, false); });
+I18N.onChange(() => { renderConvList(); if (activeMobile) loadThread(activeMobile, false); renderReplyPreview(); });
