@@ -11,16 +11,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=IBM+Plex+Sans+Arabic:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/css/style.css">
 <style>
-  body[data-page="inbox"] .main-col { height: 100vh; overflow: hidden; }
-  body[data-page="inbox"] .content-area { display: flex; flex-direction: column; overflow: hidden; padding: 10px 16px 12px; }
-  body[data-page="inbox"] .content-area > * { flex-shrink: 0; }
-  /* Compact header so small call-center screens keep most of the height for the chat itself */
-  body[data-page="inbox"] .topbar { padding: 6px 16px; }
-  body[data-page="inbox"] .content-area > .d-flex.flex-wrap { margin-bottom: 4px !important; align-items: center !important; }
-  body[data-page="inbox"] .content-area > .d-flex.flex-wrap h1 { font-size: .92rem; margin-bottom: 0 !important; }
-  body[data-page="inbox"] .content-area > .d-flex.flex-wrap p { display: none; }
-  body[data-page="inbox"] .content-area > .d-flex.flex-wrap .btn { padding: 3px 9px; font-size: .76rem; }
-  .inbox-shell { display: flex; flex: 1; min-height: 0; border: 1px solid var(--mc-border); border-radius: var(--mc-radius); overflow: hidden; background: var(--mc-surface); }
+  .inbox-shell { display: flex; height: calc(100vh - 130px); min-height: 480px; border: 1px solid var(--mc-border); border-radius: var(--mc-radius); overflow: hidden; background: var(--mc-surface); }
   .conv-list { width: 320px; flex-shrink: 0; border-inline-end: 1px solid var(--mc-border); overflow-y: auto; display: flex; flex-direction: column; }
   .conv-item { padding: 12px 14px; border-bottom: 1px solid var(--mc-border); cursor: pointer; display: flex; flex-direction: column; gap: 2px; }
   .conv-item:hover { background: var(--mc-primary-light); }
@@ -45,19 +36,32 @@
   .conv-mark-read-btn { flex-shrink: 0; }
   .thread-pane { flex: 1; display: flex; flex-direction: column; background: #E5DDD5; }
   [data-theme="dark"] .thread-pane { background: #0c1b21; }
-  .thread-header { background: var(--mc-surface); padding: 6px 14px; border-bottom: 1px solid var(--mc-border); font-weight: 700; display: flex; align-items: center; gap: 8px; }
-  .thread-header > div:first-child { width: 26px !important; height: 26px !important; font-size: .75rem; flex-shrink: 0; }
-  .thread-header > div:last-child { display: flex; align-items: baseline; gap: 8px; overflow: hidden; }
-  #threadName { font-size: .85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #threadMobile { font-size: .72rem; white-space: nowrap; }
+  .thread-header { background: var(--mc-surface); padding: 12px 16px; border-bottom: 1px solid var(--mc-border); font-weight: 700; display: flex; align-items: center; gap: 10px; }
   .thread-body { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
-  .msg-bubble { width: fit-content; max-width: min(65%, 480px); min-width: 44px; padding: 6px 9px; border-radius: 10px; font-size: .88rem; white-space: pre-wrap; word-break: break-word; box-shadow: 0 1px 1px rgba(0,0,0,.08); }
+  .msg-bubble { position: relative; width: fit-content; max-width: min(65%, 480px); min-width: 44px; padding: 6px 9px; border-radius: 10px; font-size: .88rem; white-space: pre-wrap; word-break: break-word; box-shadow: 0 1px 1px rgba(0,0,0,.08); }
   .msg-bubble.in { align-self: flex-start; background: #FFFFFF; border-start-start-radius: 2px; }
   [data-theme="dark"] .msg-bubble.in { background: #1f2c33; color: var(--mc-ink); }
   .msg-bubble.out { align-self: flex-end; background: #DCF8C6; color: #111; border-start-end-radius: 2px; }
+  [data-theme="dark"] .msg-bubble.out { background: #005c4b; color: #e9edef; }
   .msg-bubble .msg-time { font-size: .65rem; color: #667781; white-space: nowrap; margin-inline-start: 6px; }
   .msg-bubble.pending { opacity: .65; }
   .msg-agent-label { font-size: .68rem; font-weight: 700; color: var(--mc-primary); margin-bottom: 2px; }
+  .msg-reply-btn { position: absolute; top: 2px; inset-inline-end: 2px; opacity: 0; transition: opacity .15s; cursor: pointer; width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.1); color: #555; font-size: .65rem; }
+  [data-theme="dark"] .msg-reply-btn { background: rgba(255,255,255,.15); color: #ddd; }
+  .msg-bubble:hover .msg-reply-btn { opacity: 1; }
+  .msg-quote { display: flex; align-items: stretch; gap: 6px; background: rgba(0,0,0,.06); border-radius: 6px; padding: 4px 8px; margin-bottom: 4px; cursor: pointer; max-width: 100%; }
+  [data-theme="dark"] .msg-quote { background: rgba(255,255,255,.08); }
+  .msg-quote-bar { width: 3px; border-radius: 2px; background: var(--mc-primary); flex-shrink: 0; }
+  .msg-quote-body { overflow: hidden; min-width: 0; }
+  .msg-quote-name { font-size: .72rem; font-weight: 700; color: var(--mc-primary); }
+  .msg-quote-text { font-size: .76rem; color: var(--mc-ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .msg-highlight { animation: msgHighlightFlash 1.6s ease; border-radius: 10px; }
+  @keyframes msgHighlightFlash { 0% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--mc-primary) 55%, transparent); } 100% { box-shadow: 0 0 0 0 transparent; } }
+  .reply-preview-bar { display: flex; align-items: center; gap: 8px; background: var(--mc-surface); border-top: 1px solid var(--mc-border); padding: 6px 10px; }
+  .reply-preview-bar-accent { width: 3px; align-self: stretch; border-radius: 2px; background: var(--mc-primary); }
+  .reply-preview-name { font-size: .76rem; font-weight: 700; color: var(--mc-primary); }
+  .reply-preview-text { font-size: .8rem; color: var(--mc-ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .msg-search-item.active { background: var(--mc-primary-light); }
   .msg-reaction { display: flex; align-items: center; gap: 6px; width: fit-content; padding: 2px 4px; }
   .msg-reaction.in { align-self: flex-start; }
   .msg-reaction.out { align-self: flex-end; }
@@ -187,6 +191,14 @@
               </div>
             </div>
             <div class="thread-body" id="threadBody"></div>
+            <div class="reply-preview-bar d-none" id="replyPreviewBar">
+              <div class="reply-preview-bar-accent"></div>
+              <div class="flex-grow-1 overflow-hidden">
+                <div class="reply-preview-name" id="replyPreviewName"></div>
+                <div class="reply-preview-text" id="replyPreviewText"></div>
+              </div>
+              <button type="button" class="btn btn-sm btn-light" id="cancelReplyBtn" title="Cancel reply"><i class="bi bi-x-lg"></i></button>
+            </div>
             <div class="thread-input">
               <input type="file" id="attachFileInput" class="d-none" accept="image/*,application/pdf,.doc,.docx">
               <button class="btn btn-outline-secondary" id="attachBtn" title="Attach"><i class="bi bi-paperclip"></i></button>
@@ -271,9 +283,9 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="assets/js/i18n.js"></script>
 <script src="assets/js/app.js"></script>
-<script src="assets/js/api.js?v=2"></script>
+<script src="assets/js/api.js?v=3"></script>
 <script src="assets/js/auth.js"></script>
-<script src="assets/js/inbox.js?v=20"></script>
+<script src="assets/js/inbox.js?v=21"></script>
 <script>
   MCAuth.guard();
   const session = MCAuth.getSession();
