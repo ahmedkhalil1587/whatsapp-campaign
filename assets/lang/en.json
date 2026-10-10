@@ -356,6 +356,10 @@
     "unknownCustomer": "Unknown customer",
     "attachment": "Attachment",
     "reactedWith": "Reacted:",
+    "reply": "Reply",
+    "replyingTo": "Replying to",
+    "cancelReply": "Cancel reply",
+    "originalDeleted": "Original message",
     "newConversation": {
       "title": "Start new conversation",
       "explain": "This sends a pre-approved WhatsApp template message, so it reaches the patient even if they've never messaged this number before.",

@@ -356,6 +356,10 @@
     "unknownCustomer": "عميل غير معروف",
     "attachment": "مرفق",
     "reactedWith": "رياكشن:",
+    "reply": "رد",
+    "replyingTo": "بترد على",
+    "cancelReply": "إلغاء الرد",
+    "originalDeleted": "الرسالة الأصلية",
     "newConversation": {
       "title": "بدء محادثة جديدة",
       "explain": "هيتبعت قالب واتساب معتمد مسبقًا، فهيوصل للمريض حتى لو ماراسلش الرقم ده قبل كده أبدًا.",
