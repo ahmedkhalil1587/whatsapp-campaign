@@ -1,25 +1,45 @@
 /**
- * api.js — single point of contact with the Google Apps Script backend.
- * The Apps Script Web App URL can be overridden by the user on the
- * Settings page (stored in localStorage under "mc_gas_url"), but it also
- * ships with a hardcoded DEFAULT_GAS_URL below so that public pages like
- * signup.html / login.html work for visitors who have never logged in
- * (and so never had a chance to save anything to their browser's
- * localStorage). Every request goes through this wrapper so auth
- * headers / error handling stay in one place.
+ * api.js — single point of contact with the backend.
+ * The backend URL can be overridden per-device on the Settings page (stored
+ * in localStorage under "mc_gas_url"), and ships with a hardcoded
+ * DEFAULT_GAS_URL below so that public pages like signup.html / login.html
+ * work for visitors who have never logged in (and so never had a chance to
+ * save anything to their browser's localStorage).
+ *
+ * Self-healing default: every device auto-adopts DEFAULT_GAS_URL whenever
+ * DEFAULT_URL_VERSION is bumped below, even if that device previously saved
+ * a different (now-stale) URL on the Settings page. This is how a backend
+ * move (like this Apps Script -> Cloudflare Worker migration) reaches every
+ * device automatically, with nobody needing to open Settings on each one.
+ * To move the backend again in the future: change DEFAULT_GAS_URL AND bump
+ * DEFAULT_URL_VERSION by 1 -- that's it, every device self-migrates on its
+ * next page load. A manually-saved override still works in between moves.
+ *
+ * Every request goes through this wrapper so auth headers / error handling
+ * stay in one place.
  */
 
 const MCApi = (() => {
   const URL_KEY = "mc_gas_url";
-  // Deployed Apps Script Web App exec URL — update this after every new deployment.
-  const DEFAULT_GAS_URL = "https://script.google.com/macros/s/AKfycbxuCFiZtoBnfHL09SKh4Kbfw3JM6wZZ5CKpYc5ntCi0O1BhWHimReqHDsyxMbOdnQor8w/exec";
+  const URL_VERSION_KEY = "mc_gas_url_v";
+  // Current backend URL. Bump DEFAULT_URL_VERSION below whenever this changes.
+  const DEFAULT_GAS_URL = "https://whatsapp-campaign-api.madlouh.workers.dev";
+  const DEFAULT_URL_VERSION = "2"; // bump this +1 every time DEFAULT_GAS_URL changes
 
   function getBaseUrl() {
+    if (localStorage.getItem(URL_VERSION_KEY) !== DEFAULT_URL_VERSION) {
+      // Stale or first-ever visit: adopt the current default and remember
+      // that this device is now caught up to DEFAULT_URL_VERSION.
+      localStorage.setItem(URL_KEY, DEFAULT_GAS_URL);
+      localStorage.setItem(URL_VERSION_KEY, DEFAULT_URL_VERSION);
+      return DEFAULT_GAS_URL;
+    }
     return localStorage.getItem(URL_KEY) || DEFAULT_GAS_URL;
   }
 
   function setBaseUrl(url) {
     localStorage.setItem(URL_KEY, url.trim());
+    localStorage.setItem(URL_VERSION_KEY, DEFAULT_URL_VERSION); // manual save counts as caught up
   }
 
   function isConfigured() {
