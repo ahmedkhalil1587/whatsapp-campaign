@@ -302,9 +302,13 @@ function renderConvList() {
 }
 
 async function loadThread(mobile, scrollToBottom, highlightId) {
+  const isSwitchingConversation = activeMobile !== mobile;
   activeMobile = mobile;
-  // Switching conversations means any staged reply no longer applies.
-  if (replyingTo) cancelReply();
+  // Switching conversations means any staged reply no longer applies — but
+  // a background poll refresh of the SAME conversation (every few seconds,
+  // to pick up new incoming messages) shouldn't wipe out a reply someone
+  // is still in the middle of composing.
+  if (isSwitchingConversation && replyingTo) cancelReply();
   // Mark it read the moment it's opened — that's the point of opening it.
   const openedConv = allConversations.find((c) => c.MobileNumber === mobile);
   markRead(mobile, openedConv && openedConv.LastTimestamp);
