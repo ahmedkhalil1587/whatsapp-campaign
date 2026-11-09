@@ -14,6 +14,80 @@ let pollTimer = null;
 let pollInFlight = false; // guards against overlapping poll cycles hammering Apps Script
 let convFilter = "all"; // "all" | "unread" | "replied"
 let threadCache = {}; // mobile -> last-known rows[], so re-opening a chat is instant (stale-while-revalidate)
+
+// ---- Scroll behaviour of the open thread ----------------------------------
+// Goal: a background refresh must NEVER pull someone away from an older
+// message they scrolled up to (to read it or reply to it). Going back to the
+// latest message is always a manual action (the "jump to latest" button, or
+// just scrolling down / sending a message).
+const NEAR_BOTTOM_PX = 80;      // within this distance of the bottom counts as "at the bottom"
+let userScrolledUp = false;     // the person has scrolled away from the bottom of the open thread
+let unseenNewCount = 0;         // new incoming messages that arrived while they were scrolled up
+let suppressScrollUntil = 0;    // ignore scroll events caused by our own scrollTop changes
+let lastRenderedKey = "";       // what the thread DOM currently shows — lets us skip no-op re-renders
+let jumpWrap = null, jumpBtn = null;
+
+function distanceFromBottom(body) {
+  return body.scrollHeight - body.scrollTop - body.clientHeight;
+}
+
+function setThreadScroll(body, top) {
+  suppressScrollUntil = performance.now() + 150;
+  body.scrollTop = top;
+}
+
+function scrollThreadToBottom(body) {
+  setThreadScroll(body, body.scrollHeight);
+  userScrolledUp = false;
+  unseenNewCount = 0;
+  updateJumpButton();
+}
+
+/** Cheap fingerprint of a thread's rows + language: if it hasn't changed, re-painting is pointless
+ * (and would reset scroll position / selection every poll cycle). */
+function threadKey(mobile, rows) {
+  return mobile + "|" + I18N.lang + "|" + rows.map((r) => (r && r.Id ? r.Id : "_") + ":" + ((r && r.Status) || "") + ":" + String((r && r.Body) || "").length + ":" + (r && r.MediaUrl ? 1 : 0)).join(",");
+}
+
+function ensureJumpButton() {
+  if (!jumpWrap) {
+    if (!document.getElementById("jumpLatestStyle")) {
+      const st = document.createElement("style");
+      st.id = "jumpLatestStyle";
+      st.textContent = `
+        .jump-latest-wrap { position: sticky; bottom: 0; height: 0; overflow: visible; align-self: stretch; z-index: 5; pointer-events: none; }
+        .jump-latest-btn { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); pointer-events: auto; display: none; align-items: center; gap: 6px; padding: 6px 14px; border: 0; border-radius: 999px; background: var(--mc-primary, #0f4c5c); color: #fff; font-size: .8rem; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,.3); cursor: pointer; }
+        .jump-latest-btn.show { display: inline-flex; }`;
+      document.head.appendChild(st);
+    }
+    jumpWrap = document.createElement("div");
+    jumpWrap.className = "jump-latest-wrap";
+    jumpBtn = document.createElement("button");
+    jumpBtn.type = "button";
+    jumpBtn.className = "jump-latest-btn";
+    jumpBtn.addEventListener("click", () => scrollThreadToBottom(document.getElementById("threadBody")));
+    jumpWrap.appendChild(jumpBtn);
+  }
+  return jumpWrap;
+}
+
+function updateJumpButton() {
+  if (!jumpBtn) return;
+  const ar = I18N.lang === "ar";
+  const label = unseenNewCount > 0
+    ? (ar ? `${unseenNewCount} رسالة جديدة` : `${unseenNewCount} new message${unseenNewCount > 1 ? "s" : ""}`)
+    : (ar ? "آخر الرسائل" : "Latest messages");
+  jumpBtn.innerHTML = `<i class="bi bi-chevron-double-down"></i><span>${label}</span>`;
+  jumpBtn.classList.toggle("show", userScrolledUp);
+}
+
+function onThreadScroll() {
+  if (performance.now() < suppressScrollUntil) return;
+  const body = document.getElementById("threadBody");
+  userScrolledUp = distanceFromBottom(body) > NEAR_BOTTOM_PX;
+  if (!userScrolledUp) unseenNewCount = 0;
+  updateJumpButton();
+}
 // The message currently staged to be quoted in the next outgoing reply (WhatsApp-style
 // "swipe to reply"), or null. { id, waMessageId, direction, agentUsername, body } —
 // `id` is our own inbox row id (ReplyToId, for rendering the quote in OUR UI),
@@ -304,6 +378,10 @@ function renderConvList() {
 async function loadThread(mobile, scrollToBottom, highlightId) {
   const isSwitchingConversation = activeMobile !== mobile;
   activeMobile = mobile;
+  // Opening a chat (clicking it / switching to it) starts at the latest message.
+  // A silent background refresh of the already-open chat (scrollToBottom=false)
+  // keeps whatever position the person has scrolled to.
+  if (isSwitchingConversation || scrollToBottom) { userScrolledUp = false; unseenNewCount = 0; }
   // Switching conversations means any staged reply no longer applies — but
   // a background poll refresh of the SAME conversation (every few seconds,
   // to pick up new incoming messages) shouldn't wipe out a reply someone
@@ -332,16 +410,33 @@ async function loadThread(mobile, scrollToBottom, highlightId) {
   // *every* poll cycle regardless of where the person had scrolled to.
   // `highlightId` (coming from a message-search result click) overrides
   // both — jump to and flash that specific message instead of the bottom.
-  if (cached) renderThread(cached, scrollToBottom, highlightId);
-  else {
+  if (cached) {
+    // Skip the repaint when the screen already shows exactly this — a poll cycle
+    // used to rebuild the whole thread every few seconds even with nothing new,
+    // which is what kept disturbing the scroll position.
+    if (highlightId || scrollToBottom || threadKey(mobile, cached) !== lastRenderedKey) renderThread(cached, scrollToBottom, highlightId);
+  } else {
     document.getElementById("threadBody").innerHTML = `<div class="text-center text-secondary small py-3">${I18N.t("common.loading") || "…"}</div>`;
   }
 
   try {
     const res = await MCApi.Inbox.thread(mobile);
     if (mobile !== activeMobile) return; // user already switched to another chat — drop this stale response
-    threadCache[mobile] = res.rows || [];
-    renderThread(res.rows || [], scrollToBottom || !cached, highlightId);
+    const prevRows = threadCache[mobile] || [];
+    const freshRows = res.rows || [];
+    threadCache[mobile] = freshRows;
+    // Jump to the bottom only if that was asked for (opening the chat) AND the
+    // person hasn't already scrolled up during the seconds this fetch took —
+    // that was the "it drops me to the last message before I can scroll up" bug.
+    const forceBottom = (scrollToBottom || !cached) && !userScrolledUp;
+    if (highlightId || forceBottom || threadKey(mobile, freshRows) !== lastRenderedKey) {
+      if (userScrolledUp && !highlightId) {
+        // Count what's new below the fold so the "jump to latest" button can say so.
+        const known = new Set(prevRows.map((r) => r && r.Id).filter(Boolean));
+        unseenNewCount += freshRows.filter((r) => r && r.Id && !known.has(r.Id) && r.Direction === "in").length;
+      }
+      renderThread(freshRows, forceBottom, highlightId);
+    }
     // The background refresh may have revealed an even newer last message
     // than what we knew when we first marked this read — catch up again.
     const freshConv = allConversations.find((c) => c.MobileNumber === mobile);
@@ -431,7 +526,9 @@ function renderThread(rows, forceScrollToBottom, highlightId) {
   // to force it, e.g. right after sending). Otherwise a live update would
   // yank someone away from history they're scrolled up reading. A specific
   // message to highlight (from search) takes priority over both.
-  const wasNearBottom = !highlightId && (forceScrollToBottom || (body.scrollHeight - body.scrollTop - body.clientHeight < 80));
+  const wasNearBottom = !highlightId && (forceScrollToBottom || distanceFromBottom(body) < NEAR_BOTTOM_PX);
+  const prevScrollTop = body.scrollTop; // restored below when we're not following the bottom
+  if (!body._scrollWired) { body._scrollWired = true; body.addEventListener("scroll", onThreadScroll, { passive: true }); }
   const timeFmt = new Intl.DateTimeFormat(I18N.lang === "ar" ? "ar-EG" : "en-US", { hour: "2-digit", minute: "2-digit" });
   // So a reply bubble can show a quoted preview of the message it's
   // replying to, without a separate round trip — look it up by id within
@@ -496,8 +593,19 @@ function renderThread(rows, forceScrollToBottom, highlightId) {
     q.addEventListener("click", () => scrollToMessage(q.getAttribute("data-target-id")));
   });
 
+  body.appendChild(ensureJumpButton()); // innerHTML above wiped it
+  lastRenderedKey = threadKey(activeMobile, rows);
+
   if (highlightId) scrollToMessage(highlightId);
-  else if (wasNearBottom) body.scrollTop = body.scrollHeight;
+  else if (wasNearBottom) scrollThreadToBottom(body);
+  else {
+    // Not following the bottom: put the person back exactly where they were
+    // (replacing innerHTML can reset the scroll position), and surface the
+    // "jump to latest" button instead of moving them.
+    setThreadScroll(body, prevScrollTop);
+    userScrolledUp = true;
+    updateJumpButton();
+  }
 }
 
 async function sendReply() {
